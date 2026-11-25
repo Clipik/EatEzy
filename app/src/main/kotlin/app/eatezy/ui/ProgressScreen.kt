@@ -114,7 +114,7 @@ private fun WeightPanel(weights: List<WeightEntry>, days: Int) {
     Panel {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(t("Weight", "Вес"), style = T.h2, modifier = Modifier.weight(1f))
-            GhostButton(t("Log", "Записать"), icon = Lucide.Plus, color = C.accent) { logging = true }
+            GhostButton(t("Log", "Записать"), icon = Lucide.Plus) { logging = true }
         }
         Spacer(Modifier.height(S.s12))
         val cur = weights.lastOrNull()?.kg
@@ -131,7 +131,7 @@ private fun WeightPanel(weights: List<WeightEntry>, days: Int) {
         if (weights.isNotEmpty()) {
             Text(
                 if (history) t("Hide history", "Скрыть историю") else t("History · ${weights.size}", "История · ${weights.size}"),
-                style = T.bodyBold.copy(color = C.accent),
+                style = T.small.copy(color = C.text),
                 modifier = Modifier.clickable { history = !history }.padding(top = S.s12),
             )
         }
@@ -189,7 +189,7 @@ private fun Stat(value: String, label: String) {
 
 /** Bars per day with an optional dashed target line; few labels so they never overlap. */
 @Composable
-fun BarChart(values: List<Pair<LocalDate, Double>>, target: Double?, color: Color = C.accent) {
+fun BarChart(values: List<Pair<LocalDate, Double>>, target: Double?, color: Color = C.text) {
     val max = maxOf(values.maxOfOrNull { it.second } ?: 0.0, target ?: 0.0, 1.0) * 1.1
     Canvas(Modifier.fillMaxWidth().height(156.dp)) {
         val n = values.size
@@ -198,11 +198,19 @@ fun BarChart(values: List<Pair<LocalDate, Double>>, target: Double?, color: Colo
         values.forEachIndexed { i, (_, v) ->
             val h = (v / max * size.height).toFloat()
             val over = target != null && v > target
+            val barH = maxOf(h, 3.dp.toPx())
             drawRoundRect(
-                if (v == 0.0) C.surface2 else if (over) C.accent else color.copy(alpha = if (color == C.accent) 0.75f else 0.85f),
-                topLeft = Offset(i * (w + gap), size.height - maxOf(h, 3.dp.toPx())),
-                size = Size(w, maxOf(h, 3.dp.toPx())),
-                cornerRadius = CornerRadius(minOf(w / 2, 6.dp.toPx())),
+                if (v == 0.0) C.surface2 else color.copy(alpha = 0.45f),
+                topLeft = Offset(i * (w + gap), size.height - barH),
+                size = Size(w, barH),
+                cornerRadius = CornerRadius(minOf(w / 2, 4.dp.toPx())),
+            )
+            // Over the target: only a thin accent cap, so the chart stays mostly grey.
+            if (over) drawRoundRect(
+                C.accent,
+                topLeft = Offset(i * (w + gap), size.height - barH),
+                size = Size(w, 3.dp.toPx()),
+                cornerRadius = CornerRadius(minOf(w / 2, 4.dp.toPx())),
             )
         }
         if (target != null) {
@@ -249,8 +257,8 @@ fun LineChart(points: List<Pair<LocalDate, Double>>) {
         )
         val path = Path()
         points.forEachIndexed { i, (d, v) -> val o = pos(d, v); if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y) }
-        drawPath(path, C.accent, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
-        for ((d, v) in points) drawCircle(C.accent, 3.dp.toPx(), pos(d, v))
+        drawPath(path, C.text, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round))
+        for ((d, v) in points) drawCircle(C.text, 2.5.dp.toPx(), pos(d, v))
     }
     Row(Modifier.fillMaxWidth()) {
         Text("${lo.fmt(1)}–${hi.fmt(1)}", style = T.small.copy(color = C.text3), modifier = Modifier.weight(1f))

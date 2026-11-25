@@ -81,10 +81,12 @@ class ScreenshotTest {
         }
     }
 
-    @Test fun addSheet() {
+    @Test fun addMenu() {
         seed()
         rule.onNodeWithContentDescription("Добавить еду").performClick()
-        shot("02_add")
+        shot("02_add_menu")
+        tap("Повторить")
+        shot("02b_repeat")
     }
 
     @Test fun nutrientsSheet() {
@@ -93,15 +95,19 @@ class ScreenshotTest {
         shot("03_nutrients")
     }
 
-    @Test fun renderScreens() {
+    @Test fun editSheet() {
         seed()
-        shot("01_home")
         rule.onNodeWithTag("home").performScrollToNode(androidx.compose.ui.test.hasText("Спагетти с томатной", substring = true))
         shot("01b_home_list")
         tap("Спагетти с томатной")
         shot("04_edit")
-        rule.onNodeWithContentDescription("Назад").performClick()
+    }
+
+    @Test fun renderScreens() {
+        seed()
+        shot("01_home")
         tap("Прогресс")
+        rule.waitUntil(5000) { rule.onAllNodesWithText("в среднем 0").fetchSemanticsNodes().isEmpty() }
         shot("05_progress")
         tap("30 дн.")
         shot("06_progress30")

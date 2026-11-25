@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.eatezy.data.Prefs
 import app.eatezy.data.Repository
 import app.eatezy.data.language
@@ -89,13 +91,16 @@ fun AppRoot(repo: Repository) {
                     }
                 }
                 BottomBar(tab, Modifier.align(Alignment.BottomCenter)) { tab = it }
-                AnimatedContent(nav.stack.lastOrNull(), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "route") { route ->
+                // Food opens as a sheet over whatever is under it; other routes are full screens.
+                val page = nav.stack.lastOrNull { it !is Route.Edit }
+                AnimatedContent(page, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "route") { route ->
                     if (route != null) {
                         Box(Modifier.fillMaxSize().background(C.bg).statusBarsPadding().navigationBarsPadding()) {
                             RouteScreen(route, p)
                         }
                     }
                 }
+                (nav.stack.lastOrNull() as? Route.Edit)?.let { key(it.id) { EditScreen(it.id, p) } }
             }
         }
     }
@@ -104,7 +109,7 @@ fun AppRoot(repo: Repository) {
 @Composable
 private fun RouteScreen(route: Route, p: Prefs) {
     when (route) {
-        is Route.Edit -> EditScreen(route.id, p)
+        is Route.Edit -> {}
         is Route.Scan -> ScanScreen(route.date)
         is Route.Page -> SettingsPage(route.name, p)
     }
@@ -141,10 +146,10 @@ private fun androidx.compose.foundation.layout.RowScope.TabItem(icon: ImageVecto
             .padding(vertical = S.s6),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, label, tint = if (selected) C.accent else C.text2, modifier = Modifier.size(S.s24))
-        Text(label, style = T.small.copy(color = if (selected) C.text else C.text2))
+        Icon(icon, label, tint = if (selected) C.text else C.text3, modifier = Modifier.size(S.s18 + 2.dp))
+        Text(label, style = T.small.copy(color = if (selected) C.text else C.text3, fontSize = 11.sp))
     }
 }
 
 /** Space the floating bottom bar takes, for list padding. */
-val BottomSpace = 108.dp
+val BottomSpace = 96.dp

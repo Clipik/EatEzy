@@ -128,7 +128,7 @@ fun SettingsScreen(p: Prefs) {
             }
             Divider()
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = S.s12)) {
-                Icon(Lucide.Globe, null, tint = C.accent, modifier = Modifier.size(S.s24))
+                Icon(Lucide.Globe, null, tint = C.text2, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(S.s12))
                 Text(t("Language", "Язык"), style = T.body, modifier = Modifier.weight(1f))
                 for ((code, label) in listOf("system" to t("Auto", "Авто"), "ru" to "RU", "en" to "EN")) {
@@ -353,7 +353,7 @@ private fun AiPage(p: Prefs) {
                 }
             }
         }
-        if (testing) CircularProgressIndicator(Modifier.padding(top = S.s12).size(S.s24), color = C.accent, strokeWidth = 2.dp)
+        if (testing) CircularProgressIndicator(Modifier.padding(top = S.s12).size(S.s24), color = C.text2, strokeWidth = 2.dp)
         for (r in testResult) Text(r, style = T.small.copy(color = if (r.startsWith("✓")) C.good else C.accent), modifier = Modifier.padding(top = S.s6))
     }
     if (picker) ModelPicker(p, onDismiss = { picker = false }) { m ->
@@ -398,7 +398,7 @@ private fun ModelPicker(p: Prefs, onDismiss: () -> Unit, onPick: (ModelRef) -> U
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(t("Choose a model", "Выбор модели"), style = T.h2, modifier = Modifier.weight(1f))
-                if (loading) CircularProgressIndicator(Modifier.size(S.s24), color = C.accent, strokeWidth = 2.dp)
+                if (loading) CircularProgressIndicator(Modifier.size(S.s24), color = C.text2, strokeWidth = 2.dp)
                 else RoundIcon(Lucide.RefreshCw, t("Refresh", "Обновить"), size = S.s36, bg = Color.Transparent, tint = C.text2) { load(true) }
             }
         },
@@ -478,7 +478,7 @@ private fun DataPage() {
         Divider()
         ListRow(t("Delete all data", "Удалить все данные"), Lucide.Trash2, tint = C.accent) { confirmWipe = true }
     }
-    if (busy) CircularProgressIndicator(Modifier.padding(S.s18).size(S.s24), color = C.accent, strokeWidth = 2.dp)
+    if (busy) CircularProgressIndicator(Modifier.padding(S.s18).size(S.s24), color = C.text2, strokeWidth = 2.dp)
     message?.let { Text(it, style = T.body, modifier = Modifier.padding(S.s12)) }
     if (confirmWipe) AlertDialog(
         onDismissRequest = { confirmWipe = false }, containerColor = C.surface,

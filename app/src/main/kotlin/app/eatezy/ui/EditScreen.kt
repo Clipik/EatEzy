@@ -23,6 +23,12 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -98,26 +104,34 @@ fun EditScreen(id: String, p: Prefs) {
     }
 
     val e = draft
-    Column(Modifier.fillMaxSize()) {
-        Header(t("Food", "Блюдо"), onBack = {
-            draft?.let { d -> if (dirty) scope.launch { repo.save(d) } }
-            nav.back()
-        }) {
+    fun close() {
+        draft?.let { d -> if (dirty) scope.launch { repo.save(d) } }
+        nav.back()
+    }
+    // A sheet over the diary: drag the handle down to close.
+    ModalBottomSheet(
+        onDismissRequest = ::close,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = C.surface,
+        contentWindowInsets = { WindowInsets.statusBars },
+    ) {
+    Column(Modifier.fillMaxWidth().fillMaxHeight(0.94f)) {
+        Header(t("Food", "Блюдо"), onBack = null, vertical = 0.dp) {
             if (e != null) {
-                RoundIcon(Lucide.Heart, t("Favorite", "Избранное"), bg = androidx.compose.ui.graphics.Color.Transparent, tint = if (e.favorite) C.accent else C.text2) {
+                RoundIcon(Lucide.Heart, t("Favorite", "Избранное"), bg = androidx.compose.ui.graphics.Color.Transparent, tint = if (e.favorite) C.accent else C.text3) {
                     edit { it.copy(favorite = !it.favorite) }
                 }
-                RoundIcon(Lucide.Trash2, t("Delete", "Удалить"), bg = androidx.compose.ui.graphics.Color.Transparent, tint = C.text2) { confirmDelete = true }
+                RoundIcon(Lucide.Trash2, t("Delete", "Удалить"), bg = androidx.compose.ui.graphics.Color.Transparent, tint = C.text3) { confirmDelete = true }
             }
         }
         if (e == null) return@Column
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().padding(horizontal = S.s18).padding(bottom = S.s48)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().navigationBarsPadding().padding(horizontal = S.s18).padding(bottom = S.s48)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                FoodThumb(e, Modifier.size(S.s96))
+                FoodThumb(e, Modifier.size(S.s72))
                 Spacer(Modifier.width(S.s12))
                 Column(Modifier.weight(1f)) {
                     if (e.status == EntryStatus.PENDING) Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(Modifier.size(S.s18), color = C.accent, strokeWidth = 2.dp)
+                        CircularProgressIndicator(Modifier.size(S.s12), color = C.text2, strokeWidth = 1.5.dp)
                         Spacer(Modifier.width(S.s6))
                         Text(t("AI is counting…", "ИИ считает…"), style = T.body)
                     } else Field(e.name, { v -> edit { it.copy(name = v) } }, placeholder = t("Name", "Название"), style = T.h2, singleLine = false)
@@ -163,8 +177,8 @@ fun EditScreen(id: String, p: Prefs) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Field(addText, { addText = it }, Modifier.weight(1f), placeholder = t("Add: e.g. 1 tbsp olive oil", "Добавить: напр. 1 ст.л. масла"))
                     Spacer(Modifier.width(S.s6))
-                    if (adding) CircularProgressIndicator(Modifier.size(S.s24), color = C.accent, strokeWidth = 2.dp)
-                    else RoundIcon(Lucide.Plus, t("Add ingredient", "Добавить ингредиент"), size = S.s48, bg = C.accent) {
+                    if (adding) CircularProgressIndicator(Modifier.size(S.s24), color = C.text2, strokeWidth = 2.dp)
+                    else RoundIcon(Lucide.Plus, t("Add ingredient", "Добавить ингредиент"), size = S.s48, bg = C.surface2) {
                         val text = addText.trim()
                         if (text.isEmpty()) return@RoundIcon
                         adding = true; addError = null
@@ -189,7 +203,7 @@ fun EditScreen(id: String, p: Prefs) {
                 }
                 if (e.nutrients.size > 4) Text(
                     if (showNutrients) t("Less", "Свернуть") else t("All ${e.nutrients.size}", "Все ${e.nutrients.size}"),
-                    style = T.bodyBold.copy(color = C.accent),
+                    style = T.small.copy(color = C.text),
                     modifier = Modifier.clickable { showNutrients = !showNutrients }.padding(vertical = S.s6),
                 )
             }
@@ -216,6 +230,8 @@ fun EditScreen(id: String, p: Prefs) {
                 }
             }
         }
+    }
+
     }
 
     if (confirmDelete) AlertDialog(
@@ -262,7 +278,7 @@ fun EditScreen(id: String, p: Prefs) {
 @Composable
 private fun BigValue(value: String, label: String, color: androidx.compose.ui.graphics.Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, style = T.h1.copy(color = color))
+        Text(value, style = T.h2.copy(color = color))
         Text(label, style = T.small)
     }
 }

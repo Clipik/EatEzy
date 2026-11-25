@@ -71,20 +71,20 @@ fun ListRow(
     icon: ImageVector? = null,
     value: String? = null,
     subtitle: String? = null,
-    tint: Color = C.accent,
+    tint: Color = C.text2,
     chevron: Boolean = true,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = S.s48)
+            .heightIn(min = S.s36 + S.s6)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(vertical = S.s12),
+            .padding(vertical = S.s6 + 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(S.s24))
+            Icon(icon, null, tint = tint, modifier = Modifier.size(S.s18 + 2.dp))
             Spacer(Modifier.width(S.s12))
         }
         Column(Modifier.weight(1f)) {
@@ -109,7 +109,7 @@ fun Chip(text: String, selected: Boolean, onClick: () -> Unit, icon: ImageVector
             .clip(CircleShape)
             .background(if (selected) C.text else C.surface2)
             .clickable(onClick = onClick)
-            .padding(horizontal = S.s12, vertical = S.s6 + 2.dp),
+            .padding(horizontal = S.s12, vertical = S.s6),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
@@ -165,7 +165,7 @@ fun RoundIcon(icon: ImageVector, description: String, modifier: Modifier = Modif
     Box(
         modifier.size(size).clip(CircleShape).background(bg).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, description, tint = tint, modifier = Modifier.size(size / 2)) }
+    ) { Icon(icon, description, tint = tint, modifier = Modifier.size(minOf(size / 2, S.s24) - 2.dp)) }
 }
 
 /** Plain text input in a rounded box. */
@@ -231,7 +231,7 @@ fun NumberField(value: Double, onValue: (Double) -> Unit, modifier: Modifier = M
 
 /** Thin progress bar; turns accent when a limit is passed. */
 @Composable
-fun Bar(fraction: Float, color: Color, modifier: Modifier = Modifier, height: Dp = S.s6) {
+fun Bar(fraction: Float, color: Color, modifier: Modifier = Modifier, height: Dp = 4.dp) {
     Box(modifier.fillMaxWidth().height(height).clip(CircleShape).background(C.surface2)) {
         Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).height(height).clip(CircleShape).background(color))
     }
@@ -247,18 +247,18 @@ fun MacroPills(p: Double, c: Double, f: Double, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun Pill(text: String, color: Color) {
+fun Pill(text: String, @Suppress("UNUSED_PARAMETER") color: Color = C.text2) {
     Text(
         text,
-        style = T.smallBold.copy(color = color),
-        modifier = Modifier.clip(CircleShape).background(color.copy(alpha = 0.12f)).padding(horizontal = S.s12, vertical = 3.dp),
+        style = T.small.copy(color = C.text2),
+        modifier = Modifier.clip(CircleShape).background(C.surface2).padding(horizontal = S.s6 + 2.dp, vertical = 1.dp),
     )
 }
 
 @Composable
-fun Header(title: String, onBack: (() -> Unit)?, actions: @Composable RowScope.() -> Unit = {}) {
+fun Header(title: String, onBack: (() -> Unit)?, vertical: Dp = S.s12, actions: @Composable RowScope.() -> Unit = {}) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = S.s12, vertical = S.s12),
+        Modifier.fillMaxWidth().padding(horizontal = S.s12, vertical = vertical),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) RoundIcon(Lucide.ChevronLeft, t("Back", "Назад"), size = S.s48, bg = Color.Transparent, onClick = onBack)

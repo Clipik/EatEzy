@@ -21,18 +21,14 @@ object C {
     val text3 = Color(0xFF666666)
     val accent = Color(0xFFFF3B5C)
     val accentDim = Color(0x33FF3B5C)
-    val protein = Color(0xFFFF6B81)
-    val carbs = Color(0xFFFFC24B)
-    val fat = Color(0xFF5AC8FA)
-    val good = Color(0xFF4CD964)
+    /** 60 % black and greys, 30 % text, 10 % accent: macros are told apart by labels, not colors. */
+    val protein = text
+    val carbs = text
+    val fat = text
+    val good = text
 
-    fun of(key: String): Color = when (key) {
-        "protein" -> protein
-        "carbs" -> carbs
-        "fat" -> fat
-        "kcal" -> accent
-        else -> text
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun of(key: String): Color = text
 }
 
 /** Sizes on the 12 px grid: 6, 12, 18, 24, 36, 48, 60, 72… */
@@ -46,15 +42,15 @@ object S {
     val s60 = 60.dp
     val s72 = 72.dp
     val s96 = 96.dp
-    val radius = 24.dp
+    val radius = 18.dp
     val radiusSmall = 12.dp
 }
 
 object T {
-    val huge = TextStyle(fontSize = 60.sp, fontWeight = FontWeight.Bold, color = C.text, lineHeight = 60.sp)
-    val h1 = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold, color = C.text, lineHeight = 30.sp)
-    val h2 = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = C.text, lineHeight = 24.sp)
-    val body = TextStyle(fontSize = 15.sp, color = C.text, lineHeight = 21.sp)
+    val huge = TextStyle(fontSize = 48.sp, fontWeight = FontWeight.SemiBold, color = C.text, lineHeight = 48.sp)
+    val h1 = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = C.text, lineHeight = 24.sp)
+    val h2 = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = C.text, lineHeight = 24.sp)
+    val body = TextStyle(fontSize = 14.sp, color = C.text, lineHeight = 18.sp)
     val bodyBold = body.copy(fontWeight = FontWeight.SemiBold)
     val small = TextStyle(fontSize = 12.sp, color = C.text2, lineHeight = 18.sp)
     val smallBold = small.copy(fontWeight = FontWeight.SemiBold)

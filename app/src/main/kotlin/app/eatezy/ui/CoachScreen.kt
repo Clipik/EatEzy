@@ -52,7 +52,7 @@ fun CoachScreen(p: Prefs) {
 
     Column(Modifier.fillMaxSize().imePadding()) {
         Header(t("Coach", "Коуч"), onBack = null) {
-            if (messages.isNotEmpty()) RoundIcon(Lucide.RotateCcw, t("New chat", "Новый чат"), bg = Color.Transparent, tint = C.accent) {
+            if (messages.isNotEmpty()) RoundIcon(Lucide.RotateCcw, t("New chat", "Новый чат"), bg = Color.Transparent, tint = C.text2) {
                 scope.launch { repo.clearChat() }
             }
         }
@@ -86,14 +86,14 @@ fun CoachScreen(p: Prefs) {
                             modifier = Modifier
                                 .widthIn(max = 300.dp)
                                 .clip(RoundedCornerShape(S.s18))
-                                .background(if (m.fromUser) C.accent else C.surface2)
+                                .background(if (m.fromUser) C.line else C.surface)
                                 .padding(S.s12),
                         )
                     }
                 }
             }
             if (waiting) item {
-                Box(Modifier.padding(S.s12)) { CircularProgressIndicator(Modifier.size(S.s24), color = C.accent, strokeWidth = 2.dp) }
+                Box(Modifier.padding(S.s12)) { CircularProgressIndicator(Modifier.size(S.s24), color = C.text2, strokeWidth = 2.dp) }
             }
         }
         Row(
