@@ -83,11 +83,8 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
         val time = nowOn(date)
         val id = java.util.UUID.randomUUID().toString()
         val photo = withContext(Dispatchers.IO) {
-            uris.mapNotNull { uri -> storePhoto(uri, id, 0) }.mapIndexed { i, f ->
-                if (i == 0) f.renameTo(File(f.parentFile, "$id.jpg"))
-                else f.renameTo(File(f.parentFile, "${id}_${i + 1}.jpg"))
-                File(f.parentFile, if (i == 0) "$id.jpg" else "${id}_${i + 1}.jpg")
-            }.firstOrNull()
+            val jpegs = uris.mapNotNull { readPhoto(it) }
+            jpegs.mapIndexed { i, jpeg -> storePhoto(jpeg, if (i == 0) id else "${id}_${i + 1}") }.firstOrNull()
         }
         val pending = FoodEntry(
             id = id, date = date, time = time, meal = Meal.at(time), name = "", grams = 0.0, kcal = 0.0,
@@ -153,12 +150,14 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
         return ai.recognizeFood(prefs.ai, language(prefs), text, emptyList()).ingredients
     }
 
-    private fun storePhoto(uri: Uri, id: String, n: Int): File? = runCatching {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
-        val jpeg = shrinkJpeg(bytes, 1280)
-        val dir = File(context.filesDir, "photos").apply { mkdirs() }
-        File(dir, "${id}_tmp${System.nanoTime()}_$n.jpg").apply { writeBytes(jpeg) }
+    private fun readPhoto(uri: Uri): ByteArray? = runCatching {
+        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let { shrinkJpeg(it, 1280) }
     }.getOrNull()
+
+    private fun storePhoto(jpeg: ByteArray, name: String): File {
+        val dir = File(context.filesDir, "photos").apply { mkdirs() }
+        return File(dir, "$name.jpg").apply { writeBytes(jpeg) }
+    }
 
     // ---------- weights ----------
 

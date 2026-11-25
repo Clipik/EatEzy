@@ -28,7 +28,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,6 +70,8 @@ import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.Repeat
 import com.composables.icons.lucide.ScanBarcode
 import com.composables.icons.lucide.Send
+import com.composables.icons.lucide.X
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
@@ -89,15 +94,27 @@ fun BoxScope.AddMenu(p: Prefs, date: LocalDate, open: Boolean, onToggle: (Boolea
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var shotUri by rememberSaveable { mutableStateOf<String?>(null) }
+    // Photos waiting in the draft sheet, newline-joined so they survive the trip to the camera app.
+    var draftRaw by rememberSaveable { mutableStateOf("") }
+    var caption by rememberSaveable { mutableStateOf("") }
+    val drafts = draftRaw.lines().filter { it.isNotEmpty() }
+    fun addDrafts(uris: List<String>) { draftRaw = (draftRaw.lines().filter { it.isNotEmpty() } + uris).distinct().take(MaxPhotos).joinToString(NL) }
     var describing by remember { mutableStateOf(false) }
     var repeating by remember { mutableStateOf(false) }
     val noModel = p.ai.chain.isEmpty()
 
-    fun logPhoto(uri: Uri) { scope.launch { repo.logPhoto(date, uri) } }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
-        shotUri?.let { if (ok) logPhoto(Uri.parse(it)) }
+        shotUri?.let { if (ok) addDrafts(listOf(it)) }
     }
-    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) logPhoto(uri) }
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MaxPhotos)) { uris ->
+        addDrafts(uris.map { it.toString() })
+    }
+    fun shoot() {
+        val u = newShotUri(context)
+        shotUri = u.toString()
+        camera.launch(u)
+    }
+    fun pick() = gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
 
     fun needsAi(action: () -> Unit) {
         onToggle(false)
@@ -123,15 +140,9 @@ fun BoxScope.AddMenu(p: Prefs, date: LocalDate, open: Boolean, onToggle: (Boolea
                 MenuItem(Lucide.Pencil, t("Describe", "Описать")) { needsAi { describing = true } }
                 MenuItem(Lucide.ScanBarcode, t("Barcode", "Штрихкод")) { onToggle(false); nav.open(Route.Scan(date)) }
                 MenuItem(Lucide.Image, t("Gallery", "Галерея")) {
-                    needsAi { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                    needsAi { pick() }
                 }
-                MenuItem(Lucide.Camera, t("Photo", "Фото"), primary = true) {
-                    needsAi {
-                        val u = newShotUri(context)
-                        shotUri = u.toString()
-                        camera.launch(u)
-                    }
-                }
+                MenuItem(Lucide.Camera, t("Photo", "Фото"), primary = true) { needsAi { shoot() } }
                 Spacer(Modifier.height(S.s6))
             }
         }
@@ -144,6 +155,21 @@ fun BoxScope.AddMenu(p: Prefs, date: LocalDate, open: Boolean, onToggle: (Boolea
         }
     }
 
+    if (drafts.isNotEmpty()) PhotoDraftSheet(
+        photos = drafts,
+        caption = caption,
+        onCaption = { caption = it },
+        onRemove = { u -> draftRaw = (drafts - u).joinToString(NL) },
+        onCamera = ::shoot,
+        onGallery = ::pick,
+        onClose = { draftRaw = ""; caption = "" },
+        onSend = {
+            val uris = drafts.map(Uri::parse)
+            val note = caption.trim()
+            scope.launch { repo.logPhotos(date, uris, note) }
+            draftRaw = ""; caption = ""
+        },
+    )
     if (describing) DescribeSheet(onClose = { describing = false }) { text -> scope.launch { repo.logText(date, text) } }
     if (repeating) RepeatSheet(onClose = { repeating = false }) { e -> scope.launch { repo.relog(e, date) } }
 }
@@ -162,6 +188,72 @@ private fun MenuItem(icon: ImageVector, label: String, primary: Boolean = false,
         ) { Icon(icon, label, tint = C.text, modifier = Modifier.size(S.s18 + 2.dp)) }
         Spacer(Modifier.width(6.dp))
     }
+}
+
+/** How many photos one meal can have; each goes to the AI, so keep the request small. */
+private const val MaxPhotos = 6
+private const val NL = "\n"
+
+/** Photos of one meal before they are sent: add more, drop some, write a caption. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PhotoDraftSheet(
+    photos: List<String>,
+    caption: String,
+    onCaption: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onCamera: () -> Unit,
+    onGallery: () -> Unit,
+    onClose: () -> Unit,
+    onSend: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = C.surface) {
+        Column(Modifier.navigationBarsPadding().imePadding().padding(bottom = S.s18)) {
+            Text(
+                t("Photos", "Фото") + " · ${photos.size}/$MaxPhotos",
+                style = T.h2, modifier = Modifier.padding(horizontal = S.s18),
+            )
+            Spacer(Modifier.height(S.s12))
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = S.s18),
+                horizontalArrangement = Arrangement.spacedBy(S.s6),
+            ) {
+                items(photos, key = { it }) { u ->
+                    Box(Modifier.size(96.dp).clip(RoundedCornerShape(S.radiusSmall)).background(C.surface2)) {
+                        AsyncImage(Uri.parse(u), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        RoundIcon(
+                            Lucide.X, t("Remove", "Убрать"), Modifier.align(Alignment.TopEnd).padding(4.dp),
+                            size = S.s24 + 4.dp, bg = C.bg.copy(alpha = 0.7f),
+                        ) { onRemove(u) }
+                    }
+                }
+                if (photos.size < MaxPhotos) item {
+                    Column(verticalArrangement = Arrangement.spacedBy(S.s6)) {
+                        AddTile(Lucide.Camera, t("Take another photo", "Сделать ещё фото"), onCamera)
+                        AddTile(Lucide.Image, t("Add from gallery", "Добавить из галереи"), onGallery)
+                    }
+                }
+            }
+            Spacer(Modifier.height(S.s12))
+            Row(Modifier.padding(horizontal = S.s18), verticalAlignment = Alignment.Bottom) {
+                Field(
+                    caption, onCaption, Modifier.weight(1f),
+                    placeholder = t("Caption: what it is, how much, how it was cooked", "Подпись: что это, сколько, как готовили"),
+                    singleLine = false, minLines = 2,
+                )
+                Spacer(Modifier.width(S.s6))
+                RoundIcon(Lucide.Send, t("Send", "Отправить"), bg = C.accent, onClick = onSend)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddTile(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(96.dp, 45.dp).clip(RoundedCornerShape(S.radiusSmall)).background(C.surface2).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, label, tint = C.text, modifier = Modifier.size(S.s18 + 2.dp)) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

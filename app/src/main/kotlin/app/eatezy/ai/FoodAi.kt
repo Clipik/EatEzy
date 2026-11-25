@@ -34,8 +34,12 @@ Rules:
 """.trim()
 }
 
-fun foodUserText(note: String, hasPhoto: Boolean, barcode: String? = null): String = buildString {
-    if (hasPhoto) append("Photo of my food.") else append("My food.")
+fun foodUserText(note: String, photos: Int, barcode: String? = null): String = buildString {
+    when {
+        photos > 1 -> append("$photos photos of one meal (different dishes or angles); count each food once.")
+        photos == 1 -> append("Photo of my food.")
+        else -> append("My food.")
+    }
     if (barcode != null) append(" Package barcode $barcode; read the nutrition label.")
     if (note.isNotBlank()) append(" Notes: ").append(note.trim())
 }
@@ -99,4 +103,4 @@ suspend fun <T> AiClient.withFallbacks(
 }
 
 suspend fun AiClient.recognizeFood(cfg: AiConfig, lang: String, note: String, images: List<ByteArray>, barcode: String? = null): FoodGuess =
-    withFallbacks(cfg, foodSystemPrompt(lang), listOf(Msg(true, foodUserText(note, images.isNotEmpty(), barcode), images)), true, ::parseFoodGuess)
+    withFallbacks(cfg, foodSystemPrompt(lang), listOf(Msg(true, foodUserText(note, images.size, barcode), images)), true, ::parseFoodGuess)
