@@ -12,7 +12,15 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Keep the last crash so it can be copied from Settings → Updates without a computer.
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            runCatching { crashFile(this).writeText("${java.util.Date()} · ${BuildConfig.VERSION_NAME}\n${e.stackTraceToString()}") }
+            previous?.uncaughtException(thread, e)
+        }
         repository = Repository(this, Db.open(this), Settings(this), Health(this))
         repository.refreshModelsInBackground()
     }
 }
+
+fun crashFile(context: android.content.Context) = java.io.File(context.filesDir, "last_crash.txt")

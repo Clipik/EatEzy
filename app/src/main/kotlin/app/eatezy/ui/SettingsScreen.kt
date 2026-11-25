@@ -511,6 +511,17 @@ private fun AboutPage() {
             }
         }
         status?.let { Text(it, style = T.body, modifier = Modifier.padding(top = S.s12)) }
+        val crash = remember { app.eatezy.crashFile(context).takeIf { it.exists() }?.readText() }
+        if (crash != null) {
+            val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+            Spacer(Modifier.height(S.s18))
+            Text(t("Last crash", "Последний сбой"), style = T.bodyBold)
+            Text(crash.lines().take(6).joinToString("\n"), style = T.small, maxLines = 6, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(S.s6))
+            GhostButton(t("Copy error", "Скопировать ошибку"), Modifier.fillMaxWidth()) {
+                clipboard.setText(androidx.compose.ui.text.AnnotatedString(crash))
+            }
+        }
         apk?.let { url ->
             Spacer(Modifier.height(S.s12))
             GhostButton(t("Download APK", "Скачать APK"), Modifier.fillMaxWidth(), icon = Lucide.Download, color = C.accent) {
