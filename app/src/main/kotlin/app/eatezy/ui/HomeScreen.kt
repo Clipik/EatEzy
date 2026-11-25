@@ -47,21 +47,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.eatezy.data.EntryStatus
 import app.eatezy.data.FoodEntry
-import app.eatezy.data.Meal
 import app.eatezy.data.Prefs
 import app.eatezy.data.Totals
 import app.eatezy.data.fmt
 import app.eatezy.health.DayActivity
 import coil3.compose.AsyncImage
 import com.composables.icons.lucide.ChevronRight
-import com.composables.icons.lucide.Coffee
-import com.composables.icons.lucide.Cookie
 import com.composables.icons.lucide.Footprints
 import com.composables.icons.lucide.Lucide
-import com.composables.icons.lucide.Moon
 import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.RotateCw
-import com.composables.icons.lucide.Sun
 import com.composables.icons.lucide.TriangleAlert
 import kotlinx.coroutines.launch
 import java.io.File
@@ -72,6 +67,9 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 private const val WEEK_PAGES = 1000
+
+/** Side margin of everything on the home screen, so all blocks share one left and right edge. */
+private val Margin = S.s18
 
 @Composable
 fun HomeScreen(p: Prefs, date: LocalDate, onDate: (LocalDate) -> Unit) {
@@ -95,17 +93,20 @@ fun HomeScreen(p: Prefs, date: LocalDate, onDate: (LocalDate) -> Unit) {
             item { WeekStrip(date, onDate) }
             item { CalorieGauge(totals.kcal, goals.kcal, activity) }
             item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = S.s24, vertical = S.s6), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    for (key in p.homeCards.take(4)) NutrientColumn(key, totals.value(key) ?: 0.0, goals.of(key), Modifier.weight(1f))
+                Column(Modifier.fillMaxWidth().padding(horizontal = Margin), verticalArrangement = Arrangement.spacedBy(S.s18)) {
+                    for (pair in p.homeCards.take(4).chunked(2)) Row(horizontalArrangement = Arrangement.spacedBy(S.s24)) {
+                        for (key in pair) MacroCell(key, totals.value(key) ?: 0.0, goals.of(key), Modifier.weight(1f))
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
                 }
             }
             item {
                 Row(
-                    Modifier.fillMaxWidth().clickable { showDetails = true }.padding(S.s12),
+                    Modifier.fillMaxWidth().padding(top = S.s6).clickable { showDetails = true }.padding(vertical = S.s12),
                     horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(t("All nutrients", "Все нутриенты"), style = T.small)
-                    Icon(Lucide.ChevronRight, null, tint = C.text2, modifier = Modifier.size(14.dp))
+                    Text(t("All nutrients", "Все нутриенты"), style = T.small.copy(color = C.text3))
+                    Icon(Lucide.ChevronRight, null, tint = C.text3, modifier = Modifier.size(14.dp))
                 }
             }
             if (entries.isEmpty()) item {
@@ -116,13 +117,10 @@ fun HomeScreen(p: Prefs, date: LocalDate, onDate: (LocalDate) -> Unit) {
                     Text(t("Tap + and take a photo of your food", "Нажмите + и сфотографируйте еду"), style = T.small)
                 }
             }
-            for (meal in Meal.entries) {
-                val list = entries.filter { it.meal == meal }
-                if (list.isEmpty()) continue
-                item(key = "h_$meal") { MealHeader(meal, list.filter { it.status == EntryStatus.OK }) }
-                items(list, key = { it.id }) { e ->
-                    EntryCard(e, Modifier.padding(horizontal = S.s18, vertical = 3.dp)) { nav.open(Route.Edit(e.id)) }
-                }
+            // One list in eating order: breakfast/lunch/dinner mean different hours to different people.
+            if (entries.isNotEmpty()) item { Spacer(Modifier.height(S.s6)) }
+            items(entries.sortedBy { it.time }, key = { it.id }) { e ->
+                EntryCard(e, Modifier.padding(horizontal = Margin, vertical = 3.dp)) { nav.open(Route.Edit(e.id)) }
             }
         }
 
@@ -143,7 +141,7 @@ private fun WeekStrip(selected: LocalDate, onDate: (LocalDate) -> Unit) {
     val names = if (Lang.current == "ru") listOf("П", "В", "С", "Ч", "П", "С", "В") else listOf("M", "T", "W", "T", "F", "S", "S")
     HorizontalPager(pager, Modifier.fillMaxWidth().padding(top = S.s12)) { page ->
         val monday = thisMonday.minusWeeks((WEEK_PAGES - 1 - page).toLong())
-        Row(Modifier.fillMaxWidth().padding(horizontal = S.s12), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = Margin), horizontalArrangement = Arrangement.SpaceBetween) {
             for (i in 0..6) {
                 val d = monday.plusDays(i.toLong())
                 val isSel = d == selected
@@ -152,13 +150,14 @@ private fun WeekStrip(selected: LocalDate, onDate: (LocalDate) -> Unit) {
                     Modifier.weight(1f).clip(RoundedCornerShape(S.s18)).clickable(enabled = !future) { onDate(d) }.padding(vertical = S.s6),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(names[i], style = T.small.copy(color = if (d == today) C.accent else C.text3))
+                    Text(names[i], style = T.small.copy(color = if (d == today) C.text else C.text3))
                     Spacer(Modifier.height(2.dp))
                     Box(
-                        Modifier.size(S.s36).clip(CircleShape).background(if (isSel) C.text else C.bg),
+                        Modifier.size(S.s36).clip(CircleShape).background(if (isSel) C.selected else C.bg)
+                            .then(if (d == today && !isSel) Modifier.border(1.dp, C.line, CircleShape) else Modifier),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(d.dayOfMonth.toString(), style = T.bodyBold.copy(color = if (isSel) C.bg else if (future) C.text3 else C.text))
+                        Text(d.dayOfMonth.toString(), style = T.bodyBold.copy(color = if (future) C.text3 else C.text))
                     }
                 }
             }
@@ -170,89 +169,78 @@ private fun WeekStrip(selected: LocalDate, onDate: (LocalDate) -> Unit) {
 private fun CalorieGauge(eaten: Double, target: Double, activity: DayActivity?) {
     val frac = if (target > 0) (eaten / target).toFloat() else 0f
     val over = eaten > target
-    Box(Modifier.fillMaxWidth().padding(top = S.s18).height(168.dp), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(216.dp)) {
+    // The arc is open at the bottom, so the box is cut there instead of being a full square:
+    // no dead space between the gauge and the macros, and extra lines fall into the opening.
+    Box(Modifier.fillMaxWidth().padding(top = S.s24, bottom = S.s24), contentAlignment = Alignment.TopCenter) {
+        Canvas(Modifier.width(252.dp).height(180.dp)) {
             val ticks = 40
             val start = 160f
             val sweep = 220f
-            val r = size.minDimension / 2
+            val r = size.width / 2
+            val center = Offset(size.width / 2, r)
             for (i in 0 until ticks) {
                 val a = Math.toRadians((start + sweep * i / (ticks - 1)).toDouble())
                 val on = i < (frac * ticks).toInt().coerceAtMost(ticks)
-                val color = if (on) (if (over) C.accent else C.text) else C.line
+                val color = if (on) (if (over) C.warn else C.text) else C.line
                 val o = Offset(center.x + (r * cos(a)).toFloat(), center.y + (r * sin(a)).toFloat())
                 val inner = Offset(center.x + ((r - 12.dp.toPx()) * cos(a)).toFloat(), center.y + ((r - 12.dp.toPx()) * sin(a)).toFloat())
                 drawLine(color, inner, o, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
             }
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(t("CALORIES", "КАЛОРИИ"), style = T.small.copy(color = C.text3))
-            Text(eaten.fmt(0), style = T.huge.copy(color = if (over) C.accent else C.text))
+        Column(Modifier.padding(top = 72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(t("Calories", "Калории"), style = T.label)
+            Spacer(Modifier.height(S.s6))
+            Text(eaten.fmt(0), style = T.huge.copy(color = if (over) C.warn else C.text))
+            Spacer(Modifier.height(S.s6))
             val left = target - eaten
             Text(
                 if (left >= 0) t("${left.fmt(0)} left of ${target.fmt(0)}", "осталось ${left.fmt(0)} из ${target.fmt(0)}")
                 else t("${(-left).fmt(0)} over", "перебор ${(-left).fmt(0)}"),
-                style = T.small.copy(color = if (over) C.accent else C.text2),
+                style = T.small.copy(color = if (over) C.warn else C.text2),
             )
             if (activity != null) {
+                Spacer(Modifier.height(S.s12))
                 val diff = activity.burnedKcal - eaten
                 if (activity.burnedKcal > 0) Text(
                     t("${activity.burnedKcal.fmt(0)} burned · ", "${activity.burnedKcal.fmt(0)} сожжено · ") +
                         if (diff >= 0) t("${diff.fmt(0)} deficit", "дефицит ${diff.fmt(0)}") else t("${(-diff).fmt(0)} surplus", "профицит ${(-diff).fmt(0)}"),
-                    style = T.small,
+                    style = T.small.copy(color = C.text3),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Lucide.Footprints, null, tint = C.text3, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(t("${activity.steps} steps", "${activity.steps} шагов"), style = T.small)
+                    Text(t("${activity.steps} steps", "${activity.steps} шагов"), style = T.small.copy(color = C.text3))
                 }
             }
         }
     }
 }
 
-@Composable
-private fun NutrientColumn(key: String, value: Double, target: Double?, modifier: Modifier) {
-    val color = C.text
-    val limit = app.eatezy.data.Nutrients[key]?.limit == true
-    val frac = if (target != null && target > 0) (value / target).toFloat() else 0f
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value.fmt(if (value >= 100) 0 else 1), style = T.bodyBold)
-        Spacer(Modifier.height(S.s6))
-        Box(Modifier.width(8.dp).height(S.s48).clip(CircleShape).background(C.surface2), contentAlignment = Alignment.BottomCenter) {
-            Box(
-                Modifier.fillMaxWidth().fillMaxHeight(frac.coerceIn(0.08f, 1f))
-                    .clip(CircleShape).background(if (limit && frac > 1f) C.accent else color),
-            )
-        }
-        Spacer(Modifier.height(S.s6))
-        Text(keyLabel(key), style = T.small.copy(color = C.text), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (target != null) {
-            val left = target - value
-            Text(
-                if (left >= 0) t("${left.fmt(1)} left", "ещё ${left.fmt(1)}") else t("+${(-left).fmt(1)}", "+${(-left).fmt(1)}"),
-                style = T.small.copy(color = if (left < 0 && limit) C.accent else C.text3), maxLines = 1,
-            )
-        }
-    }
-}
+/** Nutrients where more is worse: going over the goal is a warning, not a success. */
+private val CEILINGS = setOf("kcal", "carbs", "fat")
 
+/** One home nutrient: label and "eaten / goal" on one line, a bar under them. */
 @Composable
-private fun MealHeader(meal: Meal, list: List<FoodEntry>) {
-    val t = list.fold(Totals()) { a, e -> a + e.totals }
-    val icon = when (meal) {
-        Meal.BREAKFAST -> Lucide.Coffee
-        Meal.LUNCH -> Lucide.Sun
-        Meal.DINNER -> Lucide.Moon
-        Meal.SNACK -> Lucide.Cookie
-    }
-    Row(Modifier.fillMaxWidth().padding(start = S.s24, end = S.s24, top = S.s18, bottom = S.s6), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = C.text3, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(S.s6))
-        Text(meal.label, style = T.bodyBold, modifier = Modifier.weight(1f))
-        Text(
-            "${t.kcal.fmt(0)} ${unitLabel("kcal")} · ${t.protein.fmt(0)}${t("P", "Б")} ${t.carbs.fmt(0)}${t("C", "У")} ${t.fat.fmt(0)}${t("F", "Ж")}",
-            style = T.small,
+private fun MacroCell(key: String, value: Double, target: Double?, modifier: Modifier) {
+    val ceiling = app.eatezy.data.Nutrients[key]?.limit == true || key in CEILINGS
+    val frac = if (target != null && target > 0) (value / target).toFloat() else 0f
+    val over = ceiling && frac > 1f
+    val near = ceiling && frac >= 0.9f && !over
+    Column(modifier) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(keyLabel(key), style = T.small, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(value.fmt(if (value >= 10) 0 else 1), style = T.bodyBold.copy(color = if (over) C.warn else C.text))
+            if (target != null) Text(" / ${target.fmt(0)}", style = T.small.copy(color = C.text3))
+        }
+        Spacer(Modifier.height(S.s6))
+        Bar(
+            frac,
+            when {
+                over -> C.warn
+                near -> C.warn.copy(alpha = 0.55f)
+                else -> C.text
+            },
+            height = S.s6,
         )
     }
 }
@@ -284,17 +272,14 @@ fun EntryCard(e: FoodEntry, modifier: Modifier = Modifier, onClick: () -> Unit) 
                 }
                 EntryStatus.ERROR -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Lucide.TriangleAlert, null, tint = C.accent, modifier = Modifier.size(14.dp))
+                        Icon(Lucide.TriangleAlert, null, tint = C.warn, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(S.s6))
                         Text(t("Not recognized", "Не распознано"), style = T.bodyBold)
                     }
                     Text(friendlyError(e.error), style = T.small, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 EntryStatus.OK -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(e.name, style = T.bodyBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        Text(e.time.toString().take(5), style = T.small.copy(color = C.text3))
-                    }
+                    Text(e.name, style = T.bodyBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
                         "${e.kcal.fmt(0)} ${unitLabel("kcal")} · ${e.grams.fmt(0)} ${unitLabel("g")} · " +
                             "${t("P", "Б")} ${e.protein.fmt(0)}  ${t("C", "У")} ${e.carbs.fmt(0)}  ${t("F", "Ж")} ${e.fat.fmt(0)}",
@@ -302,6 +287,10 @@ fun EntryCard(e: FoodEntry, modifier: Modifier = Modifier, onClick: () -> Unit) 
                     )
                 }
             }
+        }
+        if (e.status == EntryStatus.OK) {
+            Spacer(Modifier.width(S.s12))
+            Text(e.time.toString().take(5), style = T.small.copy(color = C.text3))
         }
         if (e.status == EntryStatus.ERROR) {
             RoundIcon(Lucide.RotateCw, t("Retry", "Повторить"), size = S.s36, tint = C.text) {

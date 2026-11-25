@@ -86,7 +86,7 @@ fun NutrientLine(key: String, value: Double, target: Double?, limit: Boolean) {
         if (target != null && target > 0) {
             Spacer(Modifier.height(S.s6))
             val frac = (value / target).toFloat()
-            Bar(frac, if (limit && frac > 1f) C.accent else if (key in listOf("protein", "carbs", "fat")) C.of(key) else C.text)
+            Bar(frac, if (limit && frac > 1f) C.warn else C.text)
         }
     }
 }

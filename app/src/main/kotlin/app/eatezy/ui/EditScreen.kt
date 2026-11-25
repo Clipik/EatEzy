@@ -135,7 +135,7 @@ fun EditScreen(id: String, p: Prefs) {
                         Spacer(Modifier.width(S.s6))
                         Text(t("AI is counting…", "ИИ считает…"), style = T.body)
                     } else Field(e.name, { v -> edit { it.copy(name = v) } }, placeholder = t("Name", "Название"), style = T.h2, singleLine = false)
-                    if (e.status == EntryStatus.ERROR) Text(friendlyError(e.error), style = T.small.copy(color = C.accent))
+                    if (e.status == EntryStatus.ERROR) Text(friendlyError(e.error), style = T.small.copy(color = C.warn))
                 }
             }
 
@@ -190,7 +190,7 @@ fun EditScreen(id: String, p: Prefs) {
                         }
                     }
                 }
-                addError?.let { Text(it, style = T.small.copy(color = C.accent)) }
+                addError?.let { Text(it, style = T.small.copy(color = C.warn)) }
             }
 
             SectionTitle(t("Nutrients", "Нутриенты"))

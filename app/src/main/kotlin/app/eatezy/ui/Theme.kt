@@ -10,16 +10,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Black and white; color only where it helps to find or read something. */
+/**
+ * Near-black and greys; color only where it helps to find or read something.
+ * Text is off-white, never pure white on black: full contrast glares on OLED.
+ * Accent is for two things only: the main action, and a limit that was passed ([warn]).
+ * Selection is shown with a lighter surface ([selected]), not a white fill.
+ */
 object C {
     val bg = Color(0xFF000000)
     val surface = Color(0xFF121212)
     val surface2 = Color(0xFF1C1C1C)
+    /** Selected chip, day or tab: one step lighter than [surface2]. */
+    val selected = Color(0xFF2C2C2C)
     val line = Color(0xFF262626)
-    val text = Color(0xFFFFFFFF)
-    val text2 = Color(0xFFA3A3A3)
-    val text3 = Color(0xFF666666)
+    val text = Color(0xFFE8E8E8)
+    val text2 = Color(0xFF9E9E9E)
+    val text3 = Color(0xFF6B6B6B)
     val accent = Color(0xFFFF3B5C)
+    /** A limit or goal passed, an error. Same hue as [accent], named for what it means. */
+    val warn = accent
     val accentDim = Color(0x33FF3B5C)
     /** 60 % black and greys, 30 % text, 10 % accent: macros are told apart by labels, not colors. */
     val protein = text
@@ -54,6 +63,11 @@ object T {
     val bodyBold = body.copy(fontWeight = FontWeight.SemiBold)
     val small = TextStyle(fontSize = 12.sp, color = C.text2, lineHeight = 18.sp)
     val smallBold = small.copy(fontWeight = FontWeight.SemiBold)
+    /**
+     * Section and group titles. Sentence case and one shade of grey: a title is either
+     * quiet (grey) or loud (caps, bold), never both at once.
+     */
+    val label = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium, color = C.text2, lineHeight = 18.sp)
 }
 
 @Composable

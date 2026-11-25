@@ -61,7 +61,7 @@ fun Panel(modifier: Modifier = Modifier, padding: Dp = S.s18, content: @Composab
 
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text.uppercase(), style = T.smallBold.copy(color = C.text3), modifier = modifier.padding(start = S.s6, bottom = S.s6, top = S.s18))
+    Text(text, style = T.label, modifier = modifier.padding(start = S.s6, bottom = S.s6, top = S.s24))
 }
 
 /** A row inside a [Panel] list: icon, title, value, chevron. */
@@ -107,16 +107,17 @@ fun Chip(text: String, selected: Boolean, onClick: () -> Unit, icon: ImageVector
     Row(
         Modifier
             .clip(CircleShape)
-            .background(if (selected) C.text else C.surface2)
+            .background(if (selected) C.selected else C.surface)
+            .border(1.dp, if (selected) C.text3 else C.line, CircleShape)
             .clickable(onClick = onClick)
             .padding(horizontal = S.s12, vertical = S.s6),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, null, tint = if (selected) C.bg else C.text2, modifier = Modifier.size(S.s18))
+            Icon(icon, null, tint = if (selected) C.text else C.text2, modifier = Modifier.size(S.s18))
             Spacer(Modifier.width(S.s6))
         }
-        Text(text, style = T.smallBold.copy(color = if (selected) C.bg else C.text2))
+        Text(text, style = T.smallBold.copy(color = if (selected) C.text else C.text2))
     }
 }
 
@@ -229,7 +230,7 @@ fun NumberField(value: Double, onValue: (Double) -> Unit, modifier: Modifier = M
     }
 }
 
-/** Thin progress bar; turns accent when a limit is passed. */
+/** Progress bar; callers pass [C.warn] when a limit is passed. */
 @Composable
 fun Bar(fraction: Float, color: Color, modifier: Modifier = Modifier, height: Dp = 4.dp) {
     Box(modifier.fillMaxWidth().height(height).clip(CircleShape).background(C.surface2)) {

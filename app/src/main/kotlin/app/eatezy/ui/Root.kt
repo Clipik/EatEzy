@@ -141,7 +141,7 @@ private fun androidx.compose.foundation.layout.RowScope.TabItem(icon: ImageVecto
         Modifier
             .weight(1f)
             .clip(RoundedCornerShape(30.dp))
-            .background(if (selected) C.surface2 else C.surface.copy(alpha = 0f))
+            .background(if (selected) C.selected else C.surface.copy(alpha = 0f))
             .clickable(onClick = onClick)
             .padding(vertical = S.s6),
         horizontalAlignment = Alignment.CenterHorizontally,

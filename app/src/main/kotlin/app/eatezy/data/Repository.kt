@@ -60,7 +60,7 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
     suspend fun get(id: String): FoodEntry? = db.entries().get(id)?.toEntry()
     suspend fun save(e: FoodEntry) = db.entries().put(e.toRow())
     suspend fun delete(id: String) {
-        get(id)?.photo?.let { File(it).delete() }
+        get(id)?.let { e -> photoFiles(e.photo).forEach { it.delete() } }
         db.entries().delete(id)
     }
 
@@ -72,10 +72,23 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
     // ---------- AI logging ----------
 
     /** Logs right away as "recognizing…" and fills in the entry when the AI answers. */
-    suspend fun logPhoto(date: LocalDate, uri: Uri, note: String = "", barcode: String? = null): String {
+    suspend fun logPhoto(date: LocalDate, uri: Uri, note: String = "", barcode: String? = null): String =
+        logPhotos(date, listOf(uri), note, barcode)
+
+    /**
+     * Several photos of one meal become one entry; all of them go to the AI together.
+     * The first is the entry's photo, the rest sit next to it as `<id>_2.jpg`, `<id>_3.jpg`…
+     */
+    suspend fun logPhotos(date: LocalDate, uris: List<Uri>, note: String = "", barcode: String? = null): String {
         val time = nowOn(date)
         val id = java.util.UUID.randomUUID().toString()
-        val photo = withContext(Dispatchers.IO) { storePhoto(uri, id) }
+        val photo = withContext(Dispatchers.IO) {
+            uris.mapNotNull { uri -> storePhoto(uri, id, 0) }.mapIndexed { i, f ->
+                if (i == 0) f.renameTo(File(f.parentFile, "$id.jpg"))
+                else f.renameTo(File(f.parentFile, "${id}_${i + 1}.jpg"))
+                File(f.parentFile, if (i == 0) "$id.jpg" else "${id}_${i + 1}.jpg")
+            }.firstOrNull()
+        }
         val pending = FoodEntry(
             id = id, date = date, time = time, meal = Meal.at(time), name = "", grams = 0.0, kcal = 0.0,
             protein = 0.0, carbs = 0.0, fat = 0.0, photo = photo?.path, note = note, status = EntryStatus.PENDING,
@@ -108,7 +121,7 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
             val e = get(id) ?: return@launch
             val prefs = settings.now()
             try {
-                val images = listOfNotNull(e.photo?.let { File(it) }?.takeIf { it.exists() }?.readBytes())
+                val images = photoFiles(e.photo).map { it.readBytes() }
                 val guess = ai.recognizeFood(prefs.ai, language(prefs), note, images, barcode)
                 val cur = get(id) ?: return@launch
                 save(
@@ -140,11 +153,11 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
         return ai.recognizeFood(prefs.ai, language(prefs), text, emptyList()).ingredients
     }
 
-    private fun storePhoto(uri: Uri, id: String): File? = runCatching {
+    private fun storePhoto(uri: Uri, id: String, n: Int): File? = runCatching {
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
         val jpeg = shrinkJpeg(bytes, 1280)
         val dir = File(context.filesDir, "photos").apply { mkdirs() }
-        File(dir, "$id.jpg").apply { writeBytes(jpeg) }
+        File(dir, "${id}_tmp${System.nanoTime()}_$n.jpg").apply { writeBytes(jpeg) }
     }.getOrNull()
 
     // ---------- weights ----------
@@ -288,4 +301,13 @@ fun shrinkJpeg(bytes: ByteArray, maxSide: Int): ByteArray {
         bmp.compress(Bitmap.CompressFormat.JPEG, 82, out)
         out.toByteArray()
     }
+}
+
+/** An entry's photo plus the extra shots stored beside it (`<name>_2.jpg`, `<name>_3.jpg`…). */
+fun photoFiles(photo: String?): List<File> {
+    val first = photo?.let { File(it) }?.takeIf { it.exists() } ?: return emptyList()
+    val extra = generateSequence(2) { it + 1 }
+        .map { File(first.parentFile, "${first.nameWithoutExtension}_$it.jpg") }
+        .takeWhile { it.exists() }
+    return listOf(first) + extra
 }

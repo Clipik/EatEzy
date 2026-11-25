@@ -119,7 +119,7 @@ fun BoxScope.AddMenu(p: Prefs, date: LocalDate, open: Boolean, onToggle: (Boolea
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(S.s12)) {
                 MenuItem(Lucide.Repeat, t("Repeat", "Повторить")) { onToggle(false); repeating = true }
                 Spacer(Modifier.height(S.s6))
-                if (noModel) Text(t("Set up AI first", "Сначала настройте ИИ"), style = T.small.copy(color = C.accent))
+                if (noModel) Text(t("Set up AI first", "Сначала настройте ИИ"), style = T.small.copy(color = C.warn))
                 MenuItem(Lucide.Pencil, t("Describe", "Описать")) { needsAi { describing = true } }
                 MenuItem(Lucide.ScanBarcode, t("Barcode", "Штрихкод")) { onToggle(false); nav.open(Route.Scan(date)) }
                 MenuItem(Lucide.Image, t("Gallery", "Галерея")) {
@@ -157,9 +157,9 @@ private fun MenuItem(icon: ImageVector, label: String, primary: Boolean = false,
         Text(label, style = T.bodyBold)
         Spacer(Modifier.width(S.s12))
         Box(
-            Modifier.size(S.s48).clip(CircleShape).background(if (primary) C.text else C.surface2),
+            Modifier.size(S.s48).clip(CircleShape).background(if (primary) C.accent else C.surface2),
             contentAlignment = Alignment.Center,
-        ) { Icon(icon, label, tint = if (primary) C.bg else C.text, modifier = Modifier.size(S.s18 + 2.dp)) }
+        ) { Icon(icon, label, tint = C.text, modifier = Modifier.size(S.s18 + 2.dp)) }
         Spacer(Modifier.width(6.dp))
     }
 }

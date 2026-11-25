@@ -318,7 +318,7 @@ private fun AiPage(p: Prefs) {
                     Text(m.label, style = T.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
                         (if (i == 0) t("Main", "Основная") else t("Fallback $i", "Запасная $i")) + " · " + if (m.provider == GEMINI) "Gemini" else "OpenRouter",
-                        style = T.small.copy(color = if (i == 0) C.accent else C.text2),
+                        style = T.small,
                     )
                 }
                 if (i > 0) RoundIcon(Lucide.ArrowUp, t("Up", "Выше"), size = S.s36, bg = Color.Transparent, tint = C.text2) {
@@ -354,7 +354,7 @@ private fun AiPage(p: Prefs) {
             }
         }
         if (testing) CircularProgressIndicator(Modifier.padding(top = S.s12).size(S.s24), color = C.text2, strokeWidth = 2.dp)
-        for (r in testResult) Text(r, style = T.small.copy(color = if (r.startsWith("✓")) C.good else C.accent), modifier = Modifier.padding(top = S.s6))
+        for (r in testResult) Text(r, style = T.small.copy(color = if (r.startsWith("✓")) C.good else C.warn), modifier = Modifier.padding(top = S.s6))
     }
     if (picker) ModelPicker(p, onDismiss = { picker = false }) { m ->
         picker = false
@@ -414,7 +414,7 @@ private fun ModelPicker(p: Prefs, onDismiss: () -> Unit, onPick: (ModelRef) -> U
                 cache?.let {
                     Text(t("Updated ", "Обновлено ") + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it.fetchedAt)), style = T.small.copy(color = C.text3), modifier = Modifier.padding(top = S.s6))
                 }
-                error?.let { Text(it, style = T.small.copy(color = C.accent)) }
+                error?.let { Text(it, style = T.small.copy(color = C.warn)) }
                 val models = cache?.models.orEmpty()
                     .filter { !freeOnly || it.free }
                     .filter { query.isBlank() || it.name.contains(query, true) || it.id.contains(query, true) }

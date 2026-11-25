@@ -207,7 +207,7 @@ fun BarChart(values: List<Pair<LocalDate, Double>>, target: Double?, color: Colo
             )
             // Over the target: only a thin accent cap, so the chart stays mostly grey.
             if (over) drawRoundRect(
-                C.accent,
+                C.warn,
                 topLeft = Offset(i * (w + gap), size.height - barH),
                 size = Size(w, 3.dp.toPx()),
                 cornerRadius = CornerRadius(minOf(w / 2, 4.dp.toPx())),
