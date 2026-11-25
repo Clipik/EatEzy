@@ -20,6 +20,7 @@ class App : Application() {
         }
         repository = Repository(this, Db.open(this), Settings(this), Health(this))
         repository.refreshModelsInBackground()
+        repository.resumePending()
     }
 }
 

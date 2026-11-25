@@ -17,16 +17,27 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Text
@@ -108,25 +119,23 @@ fun EditScreen(id: String, p: Prefs) {
         draft?.let { d -> if (dirty) scope.launch { repo.save(d) } }
         nav.back()
     }
-    // A sheet over the diary: drag the handle down to close.
-    ModalBottomSheet(
-        onDismissRequest = ::close,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = C.surface,
-        contentWindowInsets = { WindowInsets.statusBars },
-    ) {
-    Column(Modifier.fillMaxWidth().fillMaxHeight(0.94f)) {
-        Header(t("Food", "Блюдо"), onBack = null, vertical = 0.dp) {
-            if (e != null) {
-                RoundIcon(Lucide.Heart, t("Favorite", "Избранное"), bg = androidx.compose.ui.graphics.Color.Transparent, tint = if (e.favorite) C.accent else C.text3) {
-                    edit { it.copy(favorite = !it.favorite) }
+    // A sheet over the diary: drag the handle or header down, or tap outside, to close.
+    FoodSheet(
+        onClose = ::close,
+        header = {
+            Header(t("Food", "Блюдо"), onBack = null, vertical = 0.dp) {
+                if (e != null) {
+                    RoundIcon(Lucide.Heart, t("Favorite", "Избранное"), bg = androidx.compose.ui.graphics.Color.Transparent, tint = if (e.favorite) C.accent else C.text3) {
+                        edit { it.copy(favorite = !it.favorite) }
+                    }
+                    RoundIcon(Lucide.Trash2, t("Delete", "Удалить"), bg = androidx.compose.ui.graphics.Color.Transparent, tint = C.text3) { confirmDelete = true }
                 }
-                RoundIcon(Lucide.Trash2, t("Delete", "Удалить"), bg = androidx.compose.ui.graphics.Color.Transparent, tint = C.text3) { confirmDelete = true }
             }
-        }
-        if (e == null) return@Column
-        // Insets go on the viewport, not inside the scrolled content, and no overscroll stretch:
-        // together with the sheet's own nested scroll they made the sheet bounce at the end of the list.
+        },
+    ) {
+        if (e == null) return@FoodSheet
+        // A plain scroll: the sheet is not a nested-scroll parent, so reaching the end of the list
+        // can't move it (Material's sheet shook up and down there).
         Column(
             Modifier.weight(1f).imePadding().navigationBarsPadding()
                 .verticalScroll(rememberScrollState(), overscrollEffect = null)
@@ -238,8 +247,6 @@ fun EditScreen(id: String, p: Prefs) {
         }
     }
 
-    }
-
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
         containerColor = C.surface,
@@ -286,5 +293,65 @@ private fun BigValue(value: String, label: String, color: androidx.compose.ui.gr
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, style = T.h2.copy(color = color))
         Text(label, style = T.small)
+    }
+}
+
+/**
+ * Bottom sheet over the diary, 94 % of the screen. Material's ModalBottomSheet is a nested-scroll
+ * parent of its content and shook up and down when the list hit its end; this one only moves
+ * when its handle or header is dragged. Drag down past a quarter (or flick) or tap outside to close.
+ */
+@Composable
+private fun FoodSheet(
+    onClose: () -> Unit,
+    header: @Composable () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding()) {
+        val height = constraints.maxHeight * 0.94f
+        val offset = remember { Animatable(height) }
+        LaunchedEffect(Unit) { offset.animateTo(0f, tween(260)) }
+        var closing by remember { mutableStateOf(false) }
+        fun dismiss() {
+            if (closing) return
+            closing = true
+            scope.launch { offset.animateTo(height, tween(200)); onClose() }
+        }
+        BackHandler { dismiss() }
+        val drag = rememberDraggableState { d ->
+            scope.launch { offset.snapTo((offset.value + d).coerceIn(0f, height)) }
+        }
+        Box(
+            Modifier.fillMaxSize()
+                .graphicsLayer { alpha = (1f - offset.value / height).coerceIn(0f, 1f) }
+                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f))
+                .pointerInput(Unit) { detectTapGestures { dismiss() } },
+        )
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.94f)
+                .offset { IntOffset(0, offset.value.roundToInt()) }
+                .clip(RoundedCornerShape(topStart = S.s24, topEnd = S.s24))
+                .background(C.surface)
+                // Swallow taps so they don't reach the scrim or the diary under the sheet.
+                .pointerInput(Unit) { detectTapGestures { } },
+        ) {
+            Column(
+                Modifier.fillMaxWidth().draggable(
+                    drag, Orientation.Vertical,
+                    onDragStopped = { v ->
+                        if (offset.value > height / 4 || v > 1500f) dismiss()
+                        else offset.animateTo(0f, tween(200))
+                    },
+                ),
+            ) {
+                Box(
+                    Modifier.padding(vertical = S.s12).size(width = 32.dp, height = 4.dp).align(Alignment.CenterHorizontally)
+                        .clip(RoundedCornerShape(2.dp)).background(C.text3),
+                )
+                header()
+            }
+            content()
+        }
     }
 }

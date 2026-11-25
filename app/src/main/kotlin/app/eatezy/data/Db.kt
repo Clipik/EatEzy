@@ -85,6 +85,9 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE status = 'OK' ORDER BY createdAt DESC LIMIT 400")
     fun recent(): Flow<List<EntryRow>>
 
+    @Query("SELECT * FROM entries WHERE status = 'PENDING'")
+    suspend fun pending(): List<EntryRow>
+
     @Query("SELECT * FROM entries WHERE favorite = 1 ORDER BY name")
     fun favorites(): Flow<List<EntryRow>>
 

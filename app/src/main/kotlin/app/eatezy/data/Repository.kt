@@ -20,6 +20,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -113,23 +116,45 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
         recognize(id, note, null)
     }
 
-    private fun recognize(id: String, note: String, barcode: String?) {
+    private val _recognizing = MutableStateFlow(0)
+
+    /** How many entries the AI is working on; [RecognizeService] runs while it is above zero. */
+    val recognizing: StateFlow<Int> = _recognizing
+
+    /** Entries left "recognizing…" when the process died: start them again. */
+    fun resumePending() {
         scope.launch {
-            val e = get(id) ?: return@launch
-            val prefs = settings.now()
+            db.entries().pending().map(EntryRow::toEntry).forEach { recognize(it.id, it.note, null) }
+        }
+    }
+
+    private fun recognize(id: String, note: String, barcode: String?) {
+        _recognizing.update { it + 1 }
+        app.eatezy.RecognizeService.start(context)
+        scope.launch {
             try {
-                val images = photoFiles(e.photo).map { it.readBytes() }
-                val guess = ai.recognizeFood(prefs.ai, language(prefs), note, images, barcode)
-                val cur = get(id) ?: return@launch
-                save(
-                    cur.copy(name = guess.name, emoji = guess.emoji, source = "ai", status = EntryStatus.OK, error = null)
-                        .copy(nutrients = emptyMap()).withIngredients(guess.ingredients),
-                )
-            } catch (ex: Exception) {
-                if (ex is kotlinx.coroutines.CancellationException) throw ex
-                val cur = get(id) ?: return@launch
-                save(cur.copy(status = EntryStatus.ERROR, error = ex.message ?: ex.toString()))
+                recognizeNow(id, note, barcode)
+            } finally {
+                _recognizing.update { it - 1 }
             }
+        }
+    }
+
+    private suspend fun recognizeNow(id: String, note: String, barcode: String?) {
+        val e = get(id) ?: return
+        val prefs = settings.now()
+        try {
+            val images = photoFiles(e.photo).map { it.readBytes() }
+            val guess = ai.recognizeFood(prefs.ai, language(prefs), note, images, barcode)
+            val cur = get(id) ?: return
+            save(
+                cur.copy(name = guess.name, emoji = guess.emoji, source = "ai", status = EntryStatus.OK, error = null)
+                    .copy(nutrients = emptyMap()).withIngredients(guess.ingredients),
+            )
+        } catch (ex: Exception) {
+            if (ex is kotlinx.coroutines.CancellationException) throw ex
+            val cur = get(id) ?: return
+            save(cur.copy(status = EntryStatus.ERROR, error = ex.message ?: ex.toString()))
         }
     }
 

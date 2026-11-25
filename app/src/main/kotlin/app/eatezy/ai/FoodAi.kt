@@ -97,7 +97,13 @@ suspend fun <T> AiClient.withFallbacks(
     val errors = mutableListOf<String>()
     for (ref in cfg.chain) {
         try {
-            return accept(complete(ref, cfg.keyFor(ref), system, messages, jsonMode))
+            val answer = try {
+                complete(ref, cfg.keyFor(ref), system, messages, jsonMode)
+            } catch (_: CutOffException) {
+                // Thinking models can burn the whole budget; one more go with a bigger one.
+                complete(ref, cfg.keyFor(ref), system, messages, jsonMode, maxTokens = 32768)
+            }
+            return accept(answer)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             errors += "${ref.name}: ${e.message}"

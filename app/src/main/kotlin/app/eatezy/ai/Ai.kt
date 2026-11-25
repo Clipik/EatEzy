@@ -27,7 +27,10 @@ import java.util.concurrent.TimeUnit
 const val OPENROUTER = "openrouter"
 const val GEMINI = "gemini"
 
-class AiException(message: String) : Exception(message)
+open class AiException(message: String) : Exception(message)
+
+/** The model ran out of output tokens (usually spent on hidden reasoning) before the JSON ended. */
+class CutOffException : AiException("answer cut off (max tokens)")
 
 /** One chat turn. Images are JPEG bytes. */
 data class Msg(val fromUser: Boolean, val text: String, val images: List<ByteArray> = emptyList())
@@ -87,7 +90,12 @@ class AiClient(
             put("model", model)
             put("max_tokens", maxTokens)
             put("temperature", 0.2)
-            if (jsonMode) putJsonObject("response_format") { put("type", "json_object") }
+            if (jsonMode) {
+                putJsonObject("response_format") { put("type", "json_object") }
+                // openrouter/free often lands on reasoning models; their thinking counts against
+                // max_tokens and cut the JSON off. Low effort leaves room for the answer.
+                putJsonObject("reasoning") { put("effort", "low"); put("exclude", true) }
+            }
             putJsonArray("messages") {
                 addJsonObject { put("role", "system"); put("content", system) }
                 for (m in messages) addJsonObject {
@@ -110,7 +118,7 @@ class AiClient(
         val choice = obj["choices"]?.jsonArray?.firstOrNull()?.jsonObject ?: throw AiException("empty answer")
         val content = choice["message"]?.jsonObject?.get("content").textContent()
         val finish = choice["finish_reason"]?.jsonPrimitive?.contentOrNull
-        if (finish == "length" && jsonMode) throw AiException("answer cut off (max tokens)")
+        if (finish == "length" && jsonMode) throw CutOffException()
         if (content.isBlank()) throw AiException("empty answer")
         return content
     }
@@ -143,7 +151,7 @@ class AiClient(
             .filter { it["thought"]?.jsonPrimitive?.contentOrNull != "true" }
             .joinToString("") { it["text"]?.jsonPrimitive?.contentOrNull.orEmpty() }
         val finish = cand["finishReason"]?.jsonPrimitive?.contentOrNull
-        if (finish == "MAX_TOKENS" && jsonMode) throw AiException("answer cut off (max tokens)")
+        if (finish == "MAX_TOKENS" && jsonMode) throw CutOffException()
         if (text.isBlank()) throw AiException("empty answer ($finish)")
         return text
     }

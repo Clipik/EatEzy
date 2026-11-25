@@ -2,6 +2,11 @@ package app.eatezy
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -101,6 +106,11 @@ class ScreenshotTest {
         shot("01b_home_list")
         tap("Спагетти с томатной")
         shot("04_edit")
+        // The end of the list: the sheet must stay put (Material's sheet shook here).
+        rule.onAllNodesWithText("Пересчитать", substring = true).onLast().performScrollTo()
+        rule.onNodeWithText("Нутриенты").performTouchInput { swipeUp() }
+        rule.waitForIdle()
+        shot("04b_edit_end")
     }
 
     @Test fun renderScreens() {
