@@ -125,7 +125,13 @@ fun EditScreen(id: String, p: Prefs) {
             }
         }
         if (e == null) return@Column
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().navigationBarsPadding().padding(horizontal = S.s18).padding(bottom = S.s48)) {
+        // Insets go on the viewport, not inside the scrolled content, and no overscroll stretch:
+        // together with the sheet's own nested scroll they made the sheet bounce at the end of the list.
+        Column(
+            Modifier.weight(1f).imePadding().navigationBarsPadding()
+                .verticalScroll(rememberScrollState(), overscrollEffect = null)
+                .padding(horizontal = S.s18).padding(bottom = S.s48)
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FoodThumb(e, Modifier.size(S.s72))
                 Spacer(Modifier.width(S.s12))

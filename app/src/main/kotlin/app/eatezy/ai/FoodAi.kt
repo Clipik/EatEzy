@@ -17,7 +17,8 @@ data class FoodGuess(val name: String, val emoji: String, val ingredients: List<
 
 /**
  * Short instruction with a strict JSON shape. The old app sent a page-long prompt that ate the
- * output budget and cut answers off; this one stays under ~250 tokens.
+ * output budget and cut answers off; this one stays short. Core nutrients are mandatory, because
+ * "only meaningful values" made models skip fiber, sodium and the like.
  */
 fun foodSystemPrompt(lang: String): String {
     val language = if (lang == "ru") "Russian" else "English"
@@ -28,7 +29,10 @@ Reply with JSON only, no prose:
 Rules:
 - items: the dish split into its main ingredients (1-8), amounts as actually eaten, not per 100 g.
 - p, c, f: protein, carbs, fat in grams. Numbers only, 1 decimal.
-- x: other nutrients for that ingredient amount, only meaningful non-zero values. Allowed keys: ${Nutrients.aiKeys}
+- x: nutrients for that ingredient amount (not per 100 g), typical reference values.
+  Always include every one of these, 0 if truly absent: ${Nutrients.aiCoreKeys.joinToString(",")}
+  Also add any of these you can estimate: ${Nutrients.aiOptionalKeys.joinToString(",")}
+  Only for protein powders, supplements or sports drinks: ${Nutrients.aiRareKeys.joinToString(",")}
 - A nutrition label or package in view wins over guessing; drinks and packaged products are one item.
 - If the user gives a weight or portion, use it.
 """.trim()

@@ -1,5 +1,6 @@
 package app.eatezy
 
+import app.eatezy.ai.foodSystemPrompt
 import app.eatezy.ai.parseFoodGuess
 import app.eatezy.ai.parseGeminiModels
 import app.eatezy.ai.parseOpenrouterModels
@@ -8,6 +9,7 @@ import app.eatezy.ai.plausible
 import app.eatezy.data.FoodEntry
 import app.eatezy.data.Ingredient
 import app.eatezy.data.Meal
+import app.eatezy.data.Nutrients
 import app.eatezy.data.Targets
 import app.eatezy.data.exportDiary
 import app.eatezy.data.importDiary
@@ -160,5 +162,13 @@ class LogicTest {
         assertEquals(setOf("gemini-2.5-pro", "gemini-2.5-flash"), list.map { it.id }.toSet())
         assertTrue(list.first { it.id == "gemini-2.5-flash" }.free)
         assertFalse(list.first { it.id == "gemini-2.5-pro" }.free)
+    }
+
+    @Test fun promptAsksForEveryNutrient() {
+        val all = Nutrients.aiCoreKeys + Nutrients.aiOptionalKeys + Nutrients.aiRareKeys
+        assertEquals(Nutrients.all.map { it.key }.toSet(), all.toSet())
+        assertEquals(all.size, all.toSet().size)
+        val prompt = foodSystemPrompt("ru")
+        assertTrue(prompt.contains("fiber_g") && prompt.contains("sodium_mg"))
     }
 }

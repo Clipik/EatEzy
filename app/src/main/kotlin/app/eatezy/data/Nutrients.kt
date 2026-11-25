@@ -80,8 +80,21 @@ object Nutrients {
         "betaine" to "betaine_g", "hmb" to "hmb_g",
     )
 
-    /** Keys the AI may return; macros are separate fields. */
-    val aiKeys: String = all.joinToString(",") { it.key }
+    /** Keys the AI must fill for every ingredient (0 when absent), so common ones are never skipped. */
+    val aiCoreKeys: List<String> = listOf(
+        "fiber_g", "sugar_g", "saturated_fat_g", "cholesterol_mg", "sodium_mg", "potassium_mg",
+        "calcium_mg", "iron_mg", "magnesium_mg", "vitamin_a_mcg", "vitamin_c_mg",
+    )
+
+    /** Vitamins, minerals and fats the AI adds when it knows them. */
+    val aiOptionalKeys: List<String> = all
+        .filter { it.group != NutrientGroup.AMINO && it.group != NutrientGroup.SUPPLEMENT && it.key !in aiCoreKeys }
+        .map { it.key }
+
+    /** Amino acids and supplements: only for protein powders, supplements and the like. */
+    val aiRareKeys: List<String> = all
+        .filter { it.group == NutrientGroup.AMINO || it.group == NutrientGroup.SUPPLEMENT }
+        .map { it.key }
 
     /** Default four cards on the home screen. */
     val defaultHomeCards = listOf("protein", "carbs", "fat", "fiber_g")
