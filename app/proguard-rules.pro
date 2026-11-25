@@ -1,0 +1,4 @@
+-keepattributes *Annotation*, InnerClasses, Signature
+-keep,includedescriptorclasses class app.eatezy.**$$serializer { *; }
+-keepclassmembers class app.eatezy.** { *** Companion; }
+-dontwarn org.slf4j.**
