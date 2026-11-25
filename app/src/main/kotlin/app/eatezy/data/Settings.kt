@@ -44,7 +44,14 @@ data class Targets(
 }
 
 @Serializable
-data class ModelRef(val provider: String, val id: String, val name: String = id, val free: Boolean = false) {
+data class ModelRef(
+    val provider: String,
+    val id: String,
+    val name: String = id,
+    val free: Boolean = false,
+    /** Reads photos; food recognition needs it, the coach does not. */
+    val vision: Boolean = true,
+) {
     val label get() = name + if (free) " · free" else ""
 }
 
@@ -55,9 +62,14 @@ data class ModelCache(val fetchedAt: Long = 0, val models: List<ModelRef> = empt
 data class AiConfig(
     val openrouterKey: String = "",
     val geminiKey: String = "",
-    /** First model is the main one, the rest are tried in order when it fails. */
+    /** First model is the main one, the rest are tried in order when it fails. Food recognition. */
     val chain: List<ModelRef> = emptyList(),
-)
+    /** Models for the coach chat; empty means the same as [chain]. */
+    val coachChain: List<ModelRef> = emptyList(),
+) {
+    /** The config the coach runs with: its own models if set, otherwise the food ones. */
+    fun forCoach(): AiConfig = if (coachChain.isEmpty()) this else copy(chain = coachChain)
+}
 
 @Serializable
 data class Prefs(

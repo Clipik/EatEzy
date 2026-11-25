@@ -138,16 +138,20 @@ class LogicTest {
         assertNull(parseProduct("123", missing))
     }
 
-    @Test fun openrouterListKeepsVisionModelsOfBigProviders() {
+    @Test fun openrouterListKeepsBigProvidersAndMarksVision() {
         val text = """{"data":[
           {"id":"openai/gpt-5-mini","name":"GPT-5 mini","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"pricing":{"prompt":"0.0000002","completion":"0.000001"}},
           {"id":"google/gemma-3-27b-it:free","name":"Gemma 3","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
+          {"id":"qwen/qwen3-max","name":"Qwen3 Max","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000005"}},
           {"id":"deepseek/deepseek-chat","name":"DeepSeek","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
           {"id":"openai/gpt-image","name":"Img","architecture":{"input_modalities":["text","image"],"output_modalities":["image","text"]},"pricing":{"prompt":"0","completion":"0"}},
           {"id":"someone/vision","name":"Other","architecture":{"input_modalities":["image"],"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}}
         ]}"""
-        val ids = parseOpenrouterModels(text).map { it.id }
-        assertEquals(listOf("openrouter/auto", "openrouter/free", "openai/gpt-5-mini", "google/gemma-3-27b-it:free"), ids)
+        val all = parseOpenrouterModels(text)
+        assertEquals(listOf("openrouter/auto", "openrouter/free", "openai/gpt-5-mini", "google/gemma-3-27b-it:free", "qwen/qwen3-max"), all.map { it.id })
+        // Text-only models stay for the coach but are marked, so food recognition can skip them.
+        assertFalse(all.first { it.id == "qwen/qwen3-max" }.vision)
+        assertTrue(all.first { it.id == "openai/gpt-5-mini" }.vision)
         assertTrue(parseOpenrouterModels(text).first { it.id.startsWith("google") }.free)
     }
 

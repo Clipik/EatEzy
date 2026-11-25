@@ -71,7 +71,7 @@ fun CoachScreen(p: Prefs) {
                         Chip(q, false, { text = q })
                         Spacer(Modifier.size(S.s6))
                     }
-                    if (p.ai.chain.isEmpty()) {
+                    if (p.ai.forCoach().chain.isEmpty()) {
                         Spacer(Modifier.size(S.s12))
                         PrimaryButton(t("Set up AI", "Настроить ИИ")) { nav.open(Route.Page("ai")) }
                     }

@@ -295,9 +295,6 @@ private fun CardsPage(p: Prefs) {
 private fun AiPage(p: Prefs) {
     val repo = LocalRepo.current
     val scope = rememberCoroutineScope()
-    var picker by remember { mutableStateOf(false) }
-    var testing by remember { mutableStateOf(false) }
-    var testResult by remember { mutableStateOf<List<String>>(emptyList()) }
 
     Text(
         t("Keys stay on this phone. OpenRouter: openrouter.ai/keys · Gemini: aistudio.google.com/apikey",
@@ -309,10 +306,38 @@ private fun AiPage(p: Prefs) {
     SectionTitle("Google Gemini")
     KeyField(p.ai.geminiKey, "AIza…") { v -> scope.launch { repo.settings.update { it.copy(ai = it.ai.copy(geminiKey = v.trim())) } } }
 
-    SectionTitle(t("Models, in order", "Модели по порядку"))
+    SectionTitle(t("Food recognition models", "Модели для распознавания еды"))
+    ChainEditor(
+        p, p.ai.chain,
+        empty = t("Add a model. If the first one fails, the next is tried.", "Добавьте модель. Если первая не ответит, сработает следующая."),
+        needsVision = true,
+    ) { change -> scope.launch { repo.settings.update { it.copy(ai = it.ai.copy(chain = change(it.ai.chain))) } } }
+
+    SectionTitle(t("Coach models", "Модели для коуча"))
+    ChainEditor(
+        p, p.ai.coachChain,
+        empty = t("Same as food recognition. Add a model to give the coach its own.", "Как для распознавания еды. Добавьте модель, чтобы у коуча была своя."),
+        needsVision = false,
+    ) { change -> scope.launch { repo.settings.update { it.copy(ai = it.ai.copy(coachChain = change(it.ai.coachChain))) } } }
+}
+
+/** An ordered list of models with fallbacks: reorder, remove, add, test. */
+@Composable
+private fun ChainEditor(
+    p: Prefs,
+    chain: List<ModelRef>,
+    empty: String,
+    needsVision: Boolean,
+    update: ((List<ModelRef>) -> List<ModelRef>) -> Unit,
+) {
+    val repo = LocalRepo.current
+    val scope = rememberCoroutineScope()
+    var picker by remember { mutableStateOf(false) }
+    var testing by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf<List<String>>(emptyList()) }
     Panel(padding = S.s12) {
-        if (p.ai.chain.isEmpty()) Text(t("Add a model. If the first one fails, the next is tried.", "Добавьте модель. Если первая не ответит, сработает следующая."), style = T.small)
-        p.ai.chain.forEachIndexed { i, m ->
+        if (chain.isEmpty()) Text(empty, style = T.small)
+        chain.forEachIndexed { i, m ->
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = S.s6)) {
                 Column(Modifier.weight(1f)) {
                     Text(m.label, style = T.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -322,13 +347,13 @@ private fun AiPage(p: Prefs) {
                     )
                 }
                 if (i > 0) RoundIcon(Lucide.ArrowUp, t("Up", "Выше"), size = S.s36, bg = Color.Transparent, tint = C.text2) {
-                    scope.launch { repo.settings.update { it.copy(ai = it.ai.copy(chain = it.ai.chain.toMutableList().apply { add(i - 1, removeAt(i)) })) } }
+                    update { c -> c.toMutableList().apply { add(i - 1, removeAt(i)) } }
                 }
-                if (i < p.ai.chain.lastIndex) RoundIcon(Lucide.ArrowDown, t("Down", "Ниже"), size = S.s36, bg = Color.Transparent, tint = C.text2) {
-                    scope.launch { repo.settings.update { it.copy(ai = it.ai.copy(chain = it.ai.chain.toMutableList().apply { add(i + 1, removeAt(i)) })) } }
+                if (i < chain.lastIndex) RoundIcon(Lucide.ArrowDown, t("Down", "Ниже"), size = S.s36, bg = Color.Transparent, tint = C.text2) {
+                    update { c -> c.toMutableList().apply { add(i + 1, removeAt(i)) } }
                 }
                 RoundIcon(Lucide.X, t("Remove", "Убрать"), size = S.s36, bg = Color.Transparent, tint = C.text3) {
-                    scope.launch { repo.settings.update { it.copy(ai = it.ai.copy(chain = it.ai.chain.filterIndexed { j, _ -> j != i })) } }
+                    update { c -> c.filterIndexed { j, _ -> j != i } }
                 }
             }
             Divider()
@@ -336,12 +361,12 @@ private fun AiPage(p: Prefs) {
         Spacer(Modifier.height(S.s12))
         Row(horizontalArrangement = Arrangement.spacedBy(S.s6)) {
             PrimaryButton(t("Add model", "Добавить"), Modifier.weight(1f), icon = Lucide.Plus, enabled = p.ai.openrouterKey.isNotBlank() || p.ai.geminiKey.isNotBlank()) { picker = true }
-            if (p.ai.chain.isNotEmpty()) GhostButton(t("Test", "Проверить"), Modifier.weight(1f), icon = Lucide.Check) {
+            if (chain.isNotEmpty()) GhostButton(t("Test", "Проверить"), Modifier.weight(1f), icon = Lucide.Check) {
                 testing = true
                 testResult = emptyList()
                 scope.launch {
                     val out = mutableListOf<String>()
-                    for (m in p.ai.chain) {
+                    for (m in chain) {
                         val key = if (m.provider == GEMINI) p.ai.geminiKey else p.ai.openrouterKey
                         out += runCatching {
                             repo.ai.complete(m, key, "Reply with the single word OK.", listOf(Msg(true, "ping")), false, 2000)
@@ -356,9 +381,9 @@ private fun AiPage(p: Prefs) {
         if (testing) CircularProgressIndicator(Modifier.padding(top = S.s12).size(S.s24), color = C.text2, strokeWidth = 2.dp)
         for (r in testResult) Text(r, style = T.small.copy(color = if (r.startsWith("✓")) C.good else C.warn), modifier = Modifier.padding(top = S.s6))
     }
-    if (picker) ModelPicker(p, onDismiss = { picker = false }) { m ->
+    if (picker) ModelPicker(p, needsVision, onDismiss = { picker = false }) { m ->
         picker = false
-        scope.launch { repo.settings.update { if (it.ai.chain.any { c -> c.id == m.id && c.provider == m.provider }) it else it.copy(ai = it.ai.copy(chain = it.ai.chain + m)) } }
+        update { c -> if (c.any { it.id == m.id && it.provider == m.provider }) c else c + m }
     }
 }
 
@@ -375,7 +400,7 @@ private fun KeyField(value: String, placeholder: String, onSave: (String) -> Uni
 }
 
 @Composable
-private fun ModelPicker(p: Prefs, onDismiss: () -> Unit, onPick: (ModelRef) -> Unit) {
+private fun ModelPicker(p: Prefs, needsVision: Boolean, onDismiss: () -> Unit, onPick: (ModelRef) -> Unit) {
     val repo = LocalRepo.current
     val scope = rememberCoroutineScope()
     var provider by remember { mutableStateOf(if (p.ai.openrouterKey.isNotBlank()) OPENROUTER else GEMINI) }
@@ -416,6 +441,7 @@ private fun ModelPicker(p: Prefs, onDismiss: () -> Unit, onPick: (ModelRef) -> U
                 }
                 error?.let { Text(it, style = T.small.copy(color = C.warn)) }
                 val models = cache?.models.orEmpty()
+                    .filter { !needsVision || it.vision }
                     .filter { !freeOnly || it.free }
                     .filter { query.isBlank() || it.name.contains(query, true) || it.id.contains(query, true) }
                 LazyColumn(Modifier.height(420.dp)) {

@@ -180,7 +180,7 @@ class AiClient(
     }
 }
 
-/** Providers worth showing: the big ones with vision models. */
+/** Providers worth showing: the big ones. Text-only models are kept for the coach. */
 private val OR_PROVIDERS = listOf("openai", "anthropic", "google", "x-ai", "meta-llama", "mistralai", "qwen", "z-ai", "moonshotai")
 
 val OR_AUTO = ModelRef(OPENROUTER, "openrouter/auto", "Auto (OpenRouter)")
@@ -196,12 +196,12 @@ fun parseOpenrouterModels(text: String): List<ModelRef> {
         val arch = m["architecture"]?.jsonObject
         val input = arch?.get("input_modalities")?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
         val output = arch?.get("output_modalities")?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
-        if ("image" !in input || output != listOf("text")) return@mapNotNull null
+        if ("text" !in input || output != listOf("text")) return@mapNotNull null
         val pricing = m["pricing"]?.jsonObject
         val free = id.endsWith(":free") ||
             (pricing?.get("prompt")?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() == 0.0 &&
                 pricing["completion"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() == 0.0)
-        ModelRef(OPENROUTER, id, m["name"]?.jsonPrimitive?.contentOrNull ?: id, free)
+        ModelRef(OPENROUTER, id, m["name"]?.jsonPrimitive?.contentOrNull ?: id, free, vision = "image" in input)
     }.sortedWith(compareBy({ OR_PROVIDERS.indexOf(it.id.substringBefore('/')) }, { it.name }))
     return listOf(OR_AUTO, OR_AUTO_FREE) + models
 }

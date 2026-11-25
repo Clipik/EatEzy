@@ -32,6 +32,9 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.util.Locale
 
+/** Starts a coach message that is an error, not an answer. */
+const val ERROR_MARK = "⚠️ "
+
 private const val MODEL_TTL_MS = 3L * 24 * 3600 * 1000
 
 class Repository(private val context: Context, val db: Db, val settings: Settings, val health: Health) {
@@ -219,34 +222,72 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
     suspend fun ask(text: String) {
         db.chat().put(ChatRow(0, true, text, System.currentTimeMillis()))
         val prefs = settings.now()
-        val history = db.chat().last(16).reversed().map { Msg(it.fromUser, it.text) }
+        // Failed answers ("⚠️ …") are shown in the chat but are not something the coach said.
+        val history = db.chat().last(24).reversed()
+            .filterNot { !it.fromUser && it.text.startsWith(ERROR_MARK) }
+            .takeLast(16)
+            .map { Msg(it.fromUser, it.text) }
         val answer = try {
-            ai.withFallbacks(prefs.ai, coachPrompt(prefs), history, false) { it.trim() }
+            ai.withFallbacks(prefs.ai.forCoach(), coachPrompt(prefs), history, false) { it.trim() }
         } catch (e: AiException) {
-            "⚠️ " + (e.message ?: "error")
+            ERROR_MARK + (e.message ?: "error")
         }
         db.chat().put(ChatRow(0, false, answer, System.currentTimeMillis()))
     }
 
     private suspend fun coachPrompt(prefs: Prefs): String {
-        val today = LocalDate.now()
-        val entries = db.entries().rangeOnce(today.minusDays(13).toString(), today.toString()).map(EntryRow::toEntry)
-            .filter { it.status == EntryStatus.OK }
+        val now = java.time.LocalDateTime.now().withSecond(0).withNano(0)
+        val today = now.toLocalDate()
+        val from = today.minusDays(13)
+        val all = db.entries().rangeOnce(from.toString(), today.toString()).map(EntryRow::toEntry)
+        val entries = all.filter { it.status == EntryStatus.OK }
+        val unfinished = all.count { it.date == today && it.status != EntryStatus.OK }
         val g = prefs.goals
         val p = prefs.profile
-        val days = entries.groupBy { it.date }.toSortedMap().entries.joinToString("\n") { (d, list) ->
+        val activity: Map<LocalDate, app.eatezy.health.DayActivity> =
+            if (prefs.healthConnect && health.granted()) {
+                generateSequence(from) { it.plusDays(1) }.takeWhile { !it.isAfter(today) }
+                    .associateWith { health.day(it) }
+                    .filterValues { it.steps > 0 || it.burnedKcal > 0 }
+            } else emptyMap()
+
+        fun nutrientLine(n: Map<String, Double>) =
+            n.filterValues { it > 0 }.toSortedMap().entries.joinToString(", ") { (k, v) -> "$k ${v.fmt(if (v >= 100) 0 else 1)}" }
+
+        val byDay = entries.groupBy { it.date }
+        val days = (byDay.keys + activity.keys).toSortedSet().joinToString("\n\n") { d ->
+            val list = byDay[d].orEmpty().sortedBy { it.time }
             val t = list.fold(Totals()) { a, e -> a + e.totals }
-            "$d: ${t.kcal.fmt(0)} kcal P${t.protein.fmt(0)} C${t.carbs.fmt(0)} F${t.fat.fmt(0)} — " +
-                list.joinToString("; ") { "${it.time.toString().take(5)} ${it.name} ${it.grams.fmt(0)}g ${it.kcal.fmt(0)}kcal" }
+            buildString {
+                append("$d")
+                if (d == today) append(" (today, day not over)")
+                append(": eaten ${t.kcal.fmt(0)} kcal P${t.protein.fmt(0)} C${t.carbs.fmt(0)} F${t.fat.fmt(0)}")
+                activity[d]?.let { a ->
+                    append("; steps ${a.steps}")
+                    if (a.burnedKcal > 0) append(", burned ${a.burnedKcal.fmt(0)} kcal${if (d == today) " so far" else ""}, balance ${(t.kcal - a.burnedKcal).fmt(0)} kcal")
+                }
+                nutrientLine(t.nutrients).takeIf { it.isNotEmpty() }?.let { append("\n  nutrients: ").append(it) }
+                for (e in list) {
+                    append("\n  - ${e.time.toString().take(5)} ${e.meal.name.lowercase()}: ${e.name}, ${e.grams.fmt(0)} g, ")
+                    append("${e.kcal.fmt(0)} kcal P${e.protein.fmt(1)} C${e.carbs.fmt(1)} F${e.fat.fmt(1)}")
+                    if (e.ingredients.size > 1) append(" [" + e.ingredients.joinToString(", ") { "${it.name} ${it.grams.fmt(0)} g" } + "]")
+                    if (e.note.isNotBlank() && e.source == "ai") append(" (note: ${e.note.trim().take(120)})")
+                }
+            }
         }
+        val trackedKeys = entries.flatMap { it.nutrients.keys }.toSortedSet()
+        val nutrientTargets = trackedKeys.mapNotNull { k -> g.of(k)?.let { "$k ${it.fmt(if (it >= 100) 0 else 1)}" } }.joinToString(", ")
         val weights = db.weights().allOnce().takeLast(10).joinToString(", ") { "${it.date}: ${it.kg}" }
         val lang = if (language(prefs) == "ru") "Russian" else "English"
         return """
 You are the nutrition coach inside the EatEzy food diary. Answer in $lang, short and practical, plain text without markdown tables.
-Profile: ${if (p.male) "male" else "female"}, born ${p.birthYear}, ${p.heightCm.fmt(0)} cm, ${p.weightKg.fmt(1)} kg, goal ${p.rateKgWeek} kg/week.
+Now: $now (${today.dayOfWeek.name.lowercase()}). Today's numbers are partial until the day is over.
+Profile: ${if (p.male) "male" else "female"}, born ${p.birthYear}, ${p.heightCm.fmt(0)} cm, ${p.weightKg.fmt(1)} kg, activity factor ${p.activity}, goal ${p.rateKgWeek} kg/week.
 Daily targets: ${g.kcal.fmt(0)} kcal, protein ${g.protein.fmt(0)} g, carbs ${g.carbs.fmt(0)} g, fat ${g.fat.fmt(0)} g.
+Nutrient targets per day (key names carry the unit): ${nutrientTargets.ifEmpty { "none tracked" }}
 Weight log: ${weights.ifEmpty { "none" }}
-Diary, last 14 days (today is $today):
+Activity: ${if (activity.isEmpty()) "no data (Health Connect off or empty)" else "steps and burned calories from Health Connect, per day below"}
+${if (unfinished > 0) "Today $unfinished more food(s) are still being recognized or failed; they are not in the numbers.\n" else ""}Diary, last 14 days:
 ${days.ifEmpty { "empty" }}
 """.trim()
     }
