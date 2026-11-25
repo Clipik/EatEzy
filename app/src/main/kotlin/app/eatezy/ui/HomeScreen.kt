@@ -315,6 +315,9 @@ fun friendlyError(error: String?): String = when {
     error == null -> ""
     "NO_MODEL" in error -> t("Choose an AI model in Settings", "Выберите ИИ-модель в настройках")
     "no API key" in error -> t("Add an API key in Settings", "Добавьте API-ключ в настройках")
-    "Unable to resolve host" in error || "timeout" in error.lowercase() -> t("No internet. Tap retry", "Нет интернета. Нажмите повтор")
+    "Unable to resolve host" in error -> t("No internet. Tap retry", "Нет интернета. Нажмите повтор")
+    // A timeout is not "no internet": say so and keep the real reason, so it can be told apart.
+    "timeout" in error.lowercase() || "timed out" in error.lowercase() ->
+        t("AI did not answer in time. Tap retry", "ИИ не ответил вовремя. Нажмите повтор") + " (" + error.lineSequence().first().take(80) + ")"
     else -> error.lineSequence().first().take(160)
 }
