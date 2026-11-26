@@ -119,6 +119,8 @@ class LogicTest {
     @Test fun rejectsBrokenAiAnswer() {
         assertTrue(runCatching { parseFoodGuess("sorry, I can't") }.isFailure)
         assertTrue(runCatching { parseFoodGuess("""{"name":"x","items":[]}""") }.isFailure)
+        // Template echoed back with zeros and placeholders.
+        assertTrue(runCatching { parseFoodGuess("""{"name":"x","items":[{"n":"bread","g":"grams","kcal":0,"p":0,"c":0,"f":0,"x":{"key":"value"}}]}""") }.isFailure)
     }
 
     @Test fun offPlausibility() {

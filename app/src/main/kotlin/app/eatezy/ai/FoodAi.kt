@@ -25,7 +25,8 @@ fun foodSystemPrompt(lang: String): String {
     return """
 You are a nutritionist. Estimate what was eaten from the photo and/or text.
 Reply with JSON only, no prose:
-{"name":"dish name in $language","emoji":"one emoji","items":[{"n":"ingredient in $language","g":grams,"kcal":0,"p":0,"c":0,"f":0,"x":{"key":value}}]}
+{"name":"dish name in $language","emoji":"one emoji","items":[{"n":"ingredient in $language","g":<grams>,"kcal":<kcal>,"p":<protein g>,"c":<carbs g>,"f":<fat g>,"x":{"<nutrient key>":<amount>}}]}
+Replace every <...> with your estimate as a plain number. Never leave all values 0: every food has weight and calories.
 Rules:
 - items: the dish split into its main ingredients (1-8), amounts as actually eaten, not per 100 g.
 - p, c, f: protein, carbs, fat in grams. Numbers only, 1 decimal.
@@ -73,6 +74,8 @@ fun parseFoodGuess(answer: String): FoodGuess {
         )
     }
     if (items.isEmpty()) throw AiException("no ingredients in answer")
+    // Weak models sometimes echo the JSON template with zeros; reject it so the next model tries.
+    if (items.all { it.grams <= 0.0 && it.kcal <= 0.0 }) throw AiException("empty numbers in answer")
     val name = obj.str("name") ?: items.first().name
     val emoji = obj.str("emoji")?.takeIf { it.isNotBlank() && it.length <= 8 } ?: "🍽️"
     return FoodGuess(name, emoji, items)
