@@ -42,6 +42,7 @@ import app.eatezy.data.Prefs
 import app.eatezy.data.Repository
 import app.eatezy.data.language
 import com.composables.icons.lucide.ChartColumn
+import com.composables.icons.lucide.Dumbbell
 import com.composables.icons.lucide.House
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.MessageCircle
@@ -50,13 +51,15 @@ import java.time.LocalDate
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-enum class Tab { HOME, PROGRESS, COACH, SETTINGS }
+enum class Tab { HOME, PROGRESS, GYM, COACH, SETTINGS }
 
 /** Screens opened on top of the tabs. */
 sealed interface Route {
     data class Edit(val id: String) : Route
     data class Scan(val date: LocalDate) : Route
     data class Page(val name: String) : Route
+    /** Gym screens: "workout", "exercise" (arg: id), "program", "import", "notes". */
+    data class Gym(val page: String, val arg: String = "") : Route
 }
 
 class Nav {
@@ -103,6 +106,7 @@ fun AppRoot(repo: Repository) {
                     when (tab) {
                         Tab.HOME -> HomeScreen(p, LocalDate.parse(date)) { date = it.toString() }
                         Tab.PROGRESS -> ProgressScreen(p)
+                        Tab.GYM -> GymScreen()
                         Tab.COACH -> CoachScreen(p)
                         Tab.SETTINGS -> SettingsScreen(p)
                     }
@@ -130,6 +134,7 @@ private fun RouteScreen(route: Route, p: Prefs) {
         is Route.Edit -> {}
         is Route.Scan -> ScanScreen(route.date)
         is Route.Page -> SettingsPage(route.name, p)
+        is Route.Gym -> GymRoute(route.page, route.arg)
     }
 }
 
@@ -148,6 +153,7 @@ private fun BottomBar(tab: Tab, modifier: Modifier, onTab: (Tab) -> Unit) {
     ) {
         TabItem(Lucide.House, t("Home", "Главная"), tab == Tab.HOME) { onTab(Tab.HOME) }
         TabItem(Lucide.ChartColumn, t("Progress", "Прогресс"), tab == Tab.PROGRESS) { onTab(Tab.PROGRESS) }
+        TabItem(Lucide.Dumbbell, t("Gym", "Зал"), tab == Tab.GYM) { onTab(Tab.GYM) }
         TabItem(Lucide.MessageCircle, t("Coach", "Коуч"), tab == Tab.COACH) { onTab(Tab.COACH) }
         TabItem(Lucide.Settings, t("Settings", "Настройки"), tab == Tab.SETTINGS) { onTab(Tab.SETTINGS) }
     }

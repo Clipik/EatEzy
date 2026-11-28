@@ -302,14 +302,15 @@ private fun BigValue(value: String, label: String, color: androidx.compose.ui.gr
  * when its handle or header is dragged. Drag down past a quarter (or flick) or tap outside to close.
  */
 @Composable
-private fun FoodSheet(
+internal fun FoodSheet(
     onClose: () -> Unit,
+    fraction: Float = 0.94f,
     header: @Composable () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding()) {
-        val height = constraints.maxHeight * 0.94f
+        val height = constraints.maxHeight * fraction
         val offset = remember { Animatable(height) }
         LaunchedEffect(Unit) { offset.animateTo(0f, tween(260)) }
         var closing by remember { mutableStateOf(false) }
@@ -329,7 +330,7 @@ private fun FoodSheet(
                 .pointerInput(Unit) { detectTapGestures { dismiss() } },
         )
         Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.94f)
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(fraction)
                 .offset { IntOffset(0, offset.value.roundToInt()) }
                 .clip(RoundedCornerShape(topStart = S.s24, topEnd = S.s24))
                 .background(C.surface)

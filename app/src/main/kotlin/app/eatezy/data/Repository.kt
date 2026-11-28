@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.LocalDate
@@ -40,6 +42,7 @@ private const val MODEL_TTL_MS = 3L * 24 * 3600 * 1000
 class Repository(private val context: Context, val db: Db, val settings: Settings, val health: Health) {
     val ai = AiClient()
     val off = OpenFoodFacts()
+    val gym = GymRepo(context, db, settings, ai)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // ---------- entries ----------
@@ -128,6 +131,7 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
     fun resumePending() {
         scope.launch {
             db.entries().pending().map(EntryRow::toEntry).forEach { recognize(it.id, it.note, null) }
+            gym.resume()
         }
     }
 
@@ -386,6 +390,7 @@ ${days.ifEmpty { "empty" }}
             if (prefs.ai.geminiKey.isNotBlank()) runCatching { refreshModels(GEMINI) }
             runCatching { syncWeightsFromHealth() }
             runCatching { app.eatezy.SleepReminders.schedule(context, this@Repository) }
+            runCatching { backupIfDue() }
         }
     }
 
@@ -396,6 +401,7 @@ ${days.ifEmpty { "empty" }}
         db.entries().putAll(data.entries.map { it.toRow() })
         data.weights.forEach { db.weights().put(WeightRow(it.id, it.date.toString(), it.kg)) }
         data.sleep.forEach { db.sleep().put(it.toRow()) }
+        data.gym?.let { gym.restore(it) }
         if (data.sleep.isNotEmpty()) sleepChanged()
         data.targets?.let { t -> settings.update { it.copy(targets = it.targets.copy(manual = true, kcal = t.kcal, protein = t.protein, carbs = t.carbs, fat = t.fat)) } }
         return data
@@ -408,6 +414,13 @@ ${days.ifEmpty { "empty" }}
             db.weights().allOnce().map { WeightEntry(it.id, LocalDate.parse(it.date), it.kg) }.filter { from == null || !it.date.isBefore(from) },
             settings.now().goals,
             sleepOnce().filter { from == null || !it.date.isBefore(from) },
+            gym.all().let { g ->
+                if (from == null) g else {
+                    val ws = g.workouts.filter { !it.date.isBefore(from) }
+                    val ids = ws.map { it.id }.toSet()
+                    g.copy(workouts = ws, sets = g.sets.filter { it.workoutId in ids }, notes = g.notes.filter { it.date == null || !it.date.isBefore(from) })
+                }
+            },
         )
     }
 
@@ -425,8 +438,39 @@ ${days.ifEmpty { "empty" }}
         return aiReport(from, today, entries, weights, activity, prefs, language(prefs) == "ru", healthOn = healthOn, sleep = sleepOnce())
     }
 
+    /** Sends the whole diary (food, weight, sleep, workouts) as a .json file to the Telegram channel. */
+    suspend fun backupToTelegram() {
+        val prefs = settings.now()
+        if (prefs.telegramToken.isBlank() || prefs.telegramChat.isBlank()) throw IllegalStateException("no bot token or channel")
+        val text = export(Period.ALL)
+        val name = "EatEzy-backup-${LocalDate.now()}.json"
+        withContext(Dispatchers.IO) {
+            val body = okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
+                .addFormDataPart("chat_id", prefs.telegramChat.trim())
+                .addFormDataPart("caption", "EatEzy ${LocalDate.now()}")
+                .addFormDataPart("document", name, text.encodeToByteArray().toRequestBody("application/json".toMediaType()))
+                .build()
+            val req = okhttp3.Request.Builder().url("https://api.telegram.org/bot${prefs.telegramToken.trim()}/sendDocument").post(body).build()
+            app.eatezy.ai.http.newCall(req).execute().use { r ->
+                if (!r.isSuccessful) {
+                    val desc = runCatching { json.parseToJsonElement(r.body!!.string()).let { (it as kotlinx.serialization.json.JsonObject)["description"]?.toString() } }.getOrNull()
+                    throw IllegalStateException("Telegram ${r.code}${desc?.let { ": $it" } ?: ""}")
+                }
+            }
+        }
+        settings.update { it.copy(telegramLast = System.currentTimeMillis()) }
+    }
+
+    /** Once a month, when the app starts. */
+    private suspend fun backupIfDue() {
+        val p = settings.now()
+        if (p.telegramToken.isBlank() || p.telegramChat.isBlank()) return
+        if (System.currentTimeMillis() - p.telegramLast < 30L * 24 * 3600 * 1000) return
+        backupToTelegram()
+    }
+
     suspend fun wipe() {
-        db.entries().clear(); db.weights().clear(); db.chat().clear(); db.sleep().clear()
+        db.entries().clear(); db.weights().clear(); db.chat().clear(); db.sleep().clear(); gym.clear()
         File(context.filesDir, "photos").deleteRecursively()
     }
 

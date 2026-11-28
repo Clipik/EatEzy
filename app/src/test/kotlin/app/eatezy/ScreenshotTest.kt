@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -113,6 +114,49 @@ class ScreenshotTest {
         shot("04b_edit_end")
     }
 
+
+    /** Gym tab with the user's notes imported (GYM_NOTES folder) or a small sample, and a workout run through. */
+    @Test fun gymScreens() {
+        runBlocking {
+            repo.settings.update { it.copy(language = "ru", ai = app.eatezy.data.AiConfig()) }
+            val dir = System.getenv("GYM_NOTES")?.let(::File)?.takeIf { it.isDirectory }
+            val texts = dir?.listFiles { f -> f.extension == "txt" }?.sortedBy { it.name }?.map { it.readText() }
+                ?: listOf(SAMPLE_GYM)
+            val g = repo.gym
+            val p = app.eatezy.data.parseNotes(texts)
+            val r = app.eatezy.data.buildGymImport(p, emptyMap(), emptyMap(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+            g.restore(app.eatezy.data.GymData(r.exercises, r.workouts, r.sets, r.programs, r.notes))
+            r.weights.forEach { repo.db.weights().put(app.eatezy.data.WeightRow(it.id, it.date.toString(), it.kg)) }
+        }
+        rule.waitForIdle()
+        tap("Зал")
+        rule.waitUntil(5000) { rule.onAllNodesWithText("Начать").fetchSemanticsNodes().isNotEmpty() }
+        shot("20_gym")
+        rule.onRoot().performTouchInput { swipeUp() }
+        shot("20b_gym_stats")
+        rule.onAllNodesWithText("Начать").onFirst().performScrollTo().performClick()
+        rule.waitUntil(5000) { rule.onAllNodesWithText("Записать").fetchSemanticsNodes().isNotEmpty() }
+        rule.mainClock.advanceTimeBy(1000)
+        shot("21_set")
+        tap("Записать")
+        rule.waitUntil(5000) { rule.onAllNodesWithText("Подход 2", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        shot("22_set2")
+        rule.onNodeWithContentDescription("Заменить").performClick()
+        rule.mainClock.advanceTimeBy(600)
+        shot("23_replace")
+        rule.activity.onBackPressedDispatcher.onBackPressed()
+        rule.mainClock.advanceTimeBy(600)
+        tap("Закончить")
+        rule.waitUntil(5000) { rule.onAllNodesWithText("Готово").fetchSemanticsNodes().isNotEmpty() }
+        shot("24_finish")
+        tap("Готово")
+        rule.waitForIdle()
+        rule.onRoot().performTouchInput { swipeUp() }
+        rule.onRoot().performTouchInput { swipeUp() }
+        rule.waitForIdle()
+        shot("25_gym_after")
+    }
+
     @Test fun renderScreens() {
         seed()
         shot("01_home")
@@ -132,3 +176,14 @@ class ScreenshotTest {
         shot("10_profile")
     }
 }
+
+private const val SAMPLE_GYM = """Тренировка А
+3 Жим лежа + 3 Тяга блока
+
+ТРЕНИРОВКА А
+Жим лежа:
+20.11.26 80кг: 8 и 7 и 5
+24.11.26 80кг: 8 и 8 и 6
+
+Тяга блока:
+24.11.26 65кг: 10 и 8 и 6"""

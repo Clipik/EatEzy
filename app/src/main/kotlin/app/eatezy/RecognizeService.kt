@@ -48,7 +48,7 @@ class RecognizeService : Service() {
             watching = true
             val repo = (application as App).repository
             scope.launch {
-                repo.recognizing.first { it <= 0 }
+                kotlinx.coroutines.flow.combine(repo.recognizing, repo.gym.importing) { n, imp -> n <= 0 && !imp }.first { it }
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -78,7 +78,8 @@ class RecognizeService : Service() {
         else @Suppress("DEPRECATION") Notification.Builder(this)
         return builder
             .setSmallIcon(android.R.drawable.ic_popup_sync)
-            .setContentTitle(if (ru) "ИИ считает еду…" else "AI is counting your food…")
+            .setContentTitle(if (ru) "EatEzy работает…" else "EatEzy is working…")
+            .setContentText(if (ru) "Распознаю еду или переношу тренировки" else "Recognizing food or importing workouts")
             .setContentIntent(open)
             .setOngoing(true)
             .build()

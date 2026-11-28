@@ -21,7 +21,21 @@ data class Imported(
     /** Daily targets the old app used, kept as manual targets. */
     val targets: Targets?,
     val sleep: List<SleepEntry> = emptyList(),
+    val gym: GymData? = null,
 )
+
+/** Gym part of a backup: the database rows as they are. */
+@kotlinx.serialization.Serializable
+data class GymBackup(
+    val exercises: List<ExerciseRow> = emptyList(),
+    val programs: List<ProgramRow> = emptyList(),
+    val workouts: List<WorkoutRow> = emptyList(),
+    val sets: List<SetRow> = emptyList(),
+    val notes: List<GymNoteRow> = emptyList(),
+)
+
+fun GymData.toBackup() = GymBackup(exercises.map { it.toRow() }, programs.map { it.toRow() }, workouts.map { it.toRow() }, sets.map { it.toRow() }, notes.map { it.toRow() })
+fun GymBackup.toData() = GymData(exercises.map { it.toModel() }, workouts.map { it.toModel() }, sets.map { it.toModel() }, programs.map { it.toModel() }, notes.map { it.toModel() })
 
 private val supplementBack = Nutrients.fudSupplements.entries.associate { (k, v) -> v to k }
 
@@ -89,7 +103,8 @@ fun importDiary(text: String): Imported {
         if (bed == null && wake == null) return@mapNotNull null
         SleepEntry(s.str("id") ?: java.util.UUID.randomUUID().toString(), bed, wake, s.str("source") ?: "imported")
     }
-    return Imported(entries, weights, targets, sleep)
+    val gym = root["gym"]?.let { runCatching { json.decodeFromJsonElement(GymBackup.serializer(), it).toData() }.getOrNull() }
+    return Imported(entries, weights, targets, sleep, gym)
 }
 
 private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
@@ -111,7 +126,7 @@ private fun JsonObject.nutrients(): Map<String, Double> {
 private fun r1(v: Double) = Math.round(v * 10) / 10.0
 
 /** Same shape as the Fud AI export so it can be read by either app. */
-fun exportDiary(entries: List<FoodEntry>, weights: List<WeightEntry>, targets: Targets, sleep: List<SleepEntry> = emptyList()): String {
+fun exportDiary(entries: List<FoodEntry>, weights: List<WeightEntry>, targets: Targets, sleep: List<SleepEntry> = emptyList(), gym: GymData? = null): String {
     val days = entries.filter { it.status == EntryStatus.OK }.groupBy { it.date }.toSortedMap()
     val obj = buildJsonObject {
         putJsonObject("export") {
@@ -182,6 +197,7 @@ fun exportDiary(entries: List<FoodEntry>, weights: List<WeightEntry>, targets: T
                 n.minutes?.let { put("minutes", it) }; put("source", n.source)
             }
         }
+        if (gym != null) put("gym", json.encodeToJsonElement(GymBackup.serializer(), gym.toBackup()))
     }
     return obj.toString()
 }

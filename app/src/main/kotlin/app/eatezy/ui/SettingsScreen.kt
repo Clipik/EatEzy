@@ -69,6 +69,7 @@ import com.composables.icons.lucide.Sun
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.RefreshCw
+import com.composables.icons.lucide.Send
 import com.composables.icons.lucide.Share2
 import com.composables.icons.lucide.Smartphone
 import com.composables.icons.lucide.Target
@@ -579,12 +580,41 @@ private fun DataPage() {
             save.launch("EatEzy-${period.name.lowercase()}-${java.time.LocalDate.now()}.json")
         }
     }
+    val prefs by repo.settings.prefs.collectAsState(initial = null)
+    prefs?.let { pr ->
+        SectionTitle(t("Monthly backup to Telegram", "Бэкап в Telegram раз в месяц"))
+        Panel(padding = S.s12) {
+            Text(
+                t("Make a bot with @BotFather, add it to your channel as an admin, and paste its token and the channel (@name or -100… id). Everything — food, weight, sleep, workouts — goes there as a .json file once a month.",
+                    "Создайте бота в @BotFather, добавьте его админом в свой канал и вставьте токен и канал (@имя или id -100…). Раз в месяц туда уйдёт файл .json со всем: еда, вес, сон, тренировки."),
+                style = T.small,
+            )
+            Spacer(Modifier.height(S.s12))
+            var token by remember { mutableStateOf(pr.telegramToken) }
+            var chat by remember { mutableStateOf(pr.telegramChat) }
+            Field(token, { token = it; scope.launch { repo.settings.update { p -> p.copy(telegramToken = it.trim()) } } }, Modifier.fillMaxWidth(), placeholder = t("Bot token", "Токен бота"))
+            Spacer(Modifier.height(S.s6))
+            Field(chat, { chat = it; scope.launch { repo.settings.update { p -> p.copy(telegramChat = it.trim()) } } }, Modifier.fillMaxWidth(), placeholder = t("Channel: @name or -100…", "Канал: @имя или -100…"))
+            if (pr.telegramLast > 0) {
+                val last = java.time.Instant.ofEpochMilli(pr.telegramLast).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                Text(t("Last backup: $last", "Последний бэкап: $last"), style = T.small, modifier = Modifier.padding(top = S.s6))
+            }
+            Spacer(Modifier.height(S.s6))
+            ListRow(t("Send now", "Отправить сейчас"), Lucide.Send, chevron = false) {
+                busy = true
+                scope.launch {
+                    message = runCatching { repo.backupToTelegram(); t("Sent", "Отправлено") }.getOrElse { t("Not sent: ", "Не отправлено: ") + it.message }
+                    busy = false
+                }
+            }
+        }
+    }
     if (busy) CircularProgressIndicator(Modifier.padding(S.s18).size(S.s24), color = C.text2, strokeWidth = 2.dp)
     message?.let { Text(it, style = T.body, modifier = Modifier.padding(S.s12)) }
     if (confirmWipe) AlertDialog(
         onDismissRequest = { confirmWipe = false }, containerColor = C.surface,
         title = { Text(t("Delete everything?", "Удалить всё?"), style = T.h2) },
-        text = { Text(t("Foods, weights and chat will be gone. Settings and keys stay.", "Еда, вес и чат будут удалены. Настройки и ключи останутся."), style = T.body) },
+        text = { Text(t("Foods, weights, sleep, workouts and chat will be gone. Settings and keys stay.", "Еда, вес, сон, тренировки и чат будут удалены. Настройки и ключи останутся."), style = T.body) },
         confirmButton = { TextButton({ confirmWipe = false; scope.launch { repo.wipe(); message = t("Deleted", "Удалено") } }) { Text(t("Delete", "Удалить"), color = C.accent) } },
         dismissButton = { TextButton({ confirmWipe = false }) { Text(t("Cancel", "Отмена"), color = C.text) } },
     )

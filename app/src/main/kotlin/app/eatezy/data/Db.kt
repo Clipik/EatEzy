@@ -172,12 +172,86 @@ interface SleepDao {
     suspend fun clear()
 }
 
-@Database(entities = [EntryRow::class, WeightRow::class, ChatRow::class, SleepRow::class], version = 2, exportSchema = false)
+@Entity(tableName = "gym_exercises")
+@kotlinx.serialization.Serializable
+data class ExerciseRow(@PrimaryKey val id: String, val name: String, val note: String, val step: Double, val top: Int, val load: String)
+
+@Entity(tableName = "gym_workouts", indices = [Index("date")])
+@kotlinx.serialization.Serializable
+data class WorkoutRow(
+    @PrimaryKey val id: String, val date: String, val programId: String?, val title: String, val startAt: Long?, val endAt: Long?,
+    val note: String, val plan: String, val notes: String, val source: String,
+)
+
+@Entity(tableName = "gym_sets", indices = [Index("workoutId"), Index("exerciseId")])
+@kotlinx.serialization.Serializable
+data class SetRow(
+    @PrimaryKey val id: String, val workoutId: String, val exerciseId: String, val idx: Int, val kg: Double?, val body: Boolean,
+    val reps: Double?, val note: String, val at: Long?,
+)
+
+@Entity(tableName = "gym_programs")
+@kotlinx.serialization.Serializable
+data class ProgramRow(@PrimaryKey val id: String, val name: String, val pos: Int, val items: String)
+
+@Entity(tableName = "gym_notes", indices = [Index("topic")])
+@kotlinx.serialization.Serializable
+data class GymNoteRow(@PrimaryKey val id: String, val date: String?, val topic: String, val text: String)
+
+fun Exercise.toRow() = ExerciseRow(id, name, note, step, top, load.name)
+fun ExerciseRow.toModel() = Exercise(id, name, note, step, top, runCatching { Load.valueOf(load) }.getOrDefault(Load.WEIGHT))
+fun Workout.toRow() = WorkoutRow(id, date.toString(), programId, title, start, end, note, json.encodeToString(plan), json.encodeToString(notes), source)
+fun WorkoutRow.toModel() = Workout(
+    id, LocalDate.parse(date), programId, title, startAt, endAt, note,
+    runCatching { json.decodeFromString<List<PlanItem>>(plan) }.getOrDefault(emptyList()),
+    runCatching { json.decodeFromString<Map<String, String>>(notes) }.getOrDefault(emptyMap()), source,
+)
+fun GymSet.toRow() = SetRow(id, workoutId, exerciseId, idx, kg, body, reps, note, at)
+fun SetRow.toModel() = GymSet(id, workoutId, exerciseId, idx, kg, body, reps, note, at)
+fun Program.toRow() = ProgramRow(id, name, pos, json.encodeToString(items))
+fun ProgramRow.toModel() = Program(id, name, pos, runCatching { json.decodeFromString<List<PlanItem>>(items) }.getOrDefault(emptyList()))
+fun GymNote.toRow() = GymNoteRow(id, date?.toString(), topic, text)
+fun GymNoteRow.toModel() = GymNote(id, date?.let(LocalDate::parse), topic, text)
+
+@Dao
+interface GymDao {
+    @Query("SELECT * FROM gym_exercises ORDER BY name") fun exercises(): Flow<List<ExerciseRow>>
+    @Query("SELECT * FROM gym_exercises") suspend fun exercisesOnce(): List<ExerciseRow>
+    @Query("SELECT * FROM gym_workouts ORDER BY date, startAt") fun workouts(): Flow<List<WorkoutRow>>
+    @Query("SELECT * FROM gym_workouts ORDER BY date, startAt") suspend fun workoutsOnce(): List<WorkoutRow>
+    @Query("SELECT * FROM gym_workouts WHERE id = :id") suspend fun workout(id: String): WorkoutRow?
+    @Query("SELECT * FROM gym_sets") fun sets(): Flow<List<SetRow>>
+    @Query("SELECT * FROM gym_sets") suspend fun setsOnce(): List<SetRow>
+    @Query("SELECT * FROM gym_programs ORDER BY pos") fun programs(): Flow<List<ProgramRow>>
+    @Query("SELECT * FROM gym_programs ORDER BY pos") suspend fun programsOnce(): List<ProgramRow>
+    @Query("SELECT * FROM gym_notes") fun notes(): Flow<List<GymNoteRow>>
+    @Query("SELECT * FROM gym_notes") suspend fun notesOnce(): List<GymNoteRow>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putExercises(rows: List<ExerciseRow>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putWorkouts(rows: List<WorkoutRow>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putSets(rows: List<SetRow>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putPrograms(rows: List<ProgramRow>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putNotes(rows: List<GymNoteRow>)
+
+    @Query("DELETE FROM gym_sets WHERE id = :id") suspend fun deleteSet(id: String)
+    @Query("DELETE FROM gym_sets WHERE workoutId = :id") suspend fun deleteSetsOf(id: String)
+    @Query("DELETE FROM gym_workouts WHERE id = :id") suspend fun deleteWorkout(id: String)
+    @Query("DELETE FROM gym_programs WHERE id = :id") suspend fun deleteProgram(id: String)
+
+    @Query("DELETE FROM gym_exercises") suspend fun clearExercises()
+    @Query("DELETE FROM gym_workouts") suspend fun clearWorkouts()
+    @Query("DELETE FROM gym_sets") suspend fun clearSets()
+    @Query("DELETE FROM gym_programs") suspend fun clearPrograms()
+    @Query("DELETE FROM gym_notes") suspend fun clearNotes()
+}
+
+@Database(entities = [EntryRow::class, WeightRow::class, ChatRow::class, SleepRow::class, ExerciseRow::class, WorkoutRow::class, SetRow::class, ProgramRow::class, GymNoteRow::class], version = 3, exportSchema = false)
 abstract class Db : RoomDatabase() {
     abstract fun entries(): EntryDao
     abstract fun weights(): WeightDao
     abstract fun chat(): ChatDao
     abstract fun sleep(): SleepDao
+    abstract fun gym(): GymDao
 
     companion object {
         private val V1_2 = object : androidx.room.migration.Migration(1, 2) {
@@ -188,6 +262,20 @@ abstract class Db : RoomDatabase() {
             }
         }
 
-        fun open(context: Context): Db = Room.databaseBuilder(context, Db::class.java, "eatezy.db").addMigrations(V1_2).build()
+        private val V2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `gym_exercises` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `note` TEXT NOT NULL, `step` REAL NOT NULL, `top` INTEGER NOT NULL, `load` TEXT NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `gym_workouts` (`id` TEXT NOT NULL, `date` TEXT NOT NULL, `programId` TEXT, `title` TEXT NOT NULL, `startAt` INTEGER, `endAt` INTEGER, `note` TEXT NOT NULL, `plan` TEXT NOT NULL, `notes` TEXT NOT NULL, `source` TEXT NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_gym_workouts_date` ON `gym_workouts` (`date`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `gym_sets` (`id` TEXT NOT NULL, `workoutId` TEXT NOT NULL, `exerciseId` TEXT NOT NULL, `idx` INTEGER NOT NULL, `kg` REAL, `body` INTEGER NOT NULL, `reps` REAL, `note` TEXT NOT NULL, `at` INTEGER, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_gym_sets_workoutId` ON `gym_sets` (`workoutId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_gym_sets_exerciseId` ON `gym_sets` (`exerciseId`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `gym_programs` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `pos` INTEGER NOT NULL, `items` TEXT NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `gym_notes` (`id` TEXT NOT NULL, `date` TEXT, `topic` TEXT NOT NULL, `text` TEXT NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_gym_notes_topic` ON `gym_notes` (`topic`)")
+            }
+        }
+
+        fun open(context: Context): Db = Room.databaseBuilder(context, Db::class.java, "eatezy.db").addMigrations(V1_2, V2_3).build()
     }
 }

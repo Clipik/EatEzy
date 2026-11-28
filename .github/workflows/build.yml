@@ -36,7 +36,7 @@ jobs:
             echo "::warning::No KEYSTORE_BASE64 secret: the APK is unsigned and is not released."
           fi
       - name: Tests
-        run: gradle :app:testDebugUnitTest --tests "app.eatezy.LogicTest" --console=plain
+        run: gradle :app:testDebugUnitTest --tests "app.eatezy.LogicTest" --tests "app.eatezy.GymTest" --console=plain
       - name: APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}

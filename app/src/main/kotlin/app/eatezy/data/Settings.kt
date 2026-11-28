@@ -86,6 +86,11 @@ data class Prefs(
     val sleepEvening: Boolean = true,
     val sleepMorning: Boolean = true,
     val modelCache: Map<String, ModelCache> = emptyMap(),
+    /** Monthly backup to a Telegram channel: a bot token and the channel (@name or -100… id). */
+    val telegramToken: String = "",
+    val telegramChat: String = "",
+    /** When the last backup went out, epoch ms. */
+    val telegramLast: Long = 0,
 ) {
     /** Targets in effect: manual ones, or computed from the profile. */
     val goals: Targets get() = if (targets.manual) targets else computeTargets(profile, targets)
