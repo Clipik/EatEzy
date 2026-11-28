@@ -39,3 +39,14 @@ fun eveningReminder(nights: List<SleepEntry>): LocalTime =
 /** Morning reminder: 15 min after the usual wake-up once 3 nights are logged, else 08:15. */
 fun morningReminder(nights: List<SleepEntry>): LocalTime =
     usualWake(nights)?.takeIf { completeNights(nights) >= 3 }?.plusMinutes(15) ?: LocalTime.of(8, 15)
+
+/**
+ * The latest day whose night is over. Before the usual wake-up (+3 h; noon when unknown) today's
+ * night is still going, even when the user has not gone to bed yet: it is not a missed night.
+ */
+fun lastSleepDay(nights: List<SleepEntry>, now: LocalDateTime = LocalDateTime.now()): java.time.LocalDate {
+    val today = now.toLocalDate()
+    if (nights.any { it.date == today && it.wake != null }) return today
+    val dayStarts = usualWake(nights)?.plusHours(3) ?: LocalTime.NOON
+    return if (now.toLocalTime() >= dayStarts) today else today.minusDays(1)
+}

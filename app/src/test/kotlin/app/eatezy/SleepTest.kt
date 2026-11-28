@@ -72,4 +72,15 @@ class SleepTest {
         assertTrue(r, r.contains("Сон: 23:40 → 07:55 (8:15)"))
         assertTrue(r, r.contains("записано ночей 1"))
     }
+
+    @Test fun tonightIsNotMissedBeforeItIsOver() {
+        val sat = night(28, "00:30", "08:00")
+        // Sunday 01:56, not asleep yet: the last finished night is Saturday's.
+        assertEquals(LocalDate.of(2026, 11, 28), app.eatezy.data.lastSleepDay(listOf(sat), LocalDateTime.of(2026, 11, 29, 1, 56)))
+        // Sunday 13:00 with no wake-up logged: Sunday's night is over (and missing).
+        assertEquals(LocalDate.of(2026, 11, 29), app.eatezy.data.lastSleepDay(listOf(sat), LocalDateTime.of(2026, 11, 29, 13, 0)))
+        // Woke up and logged it at 07:40: today counts right away.
+        val sun = night(29, "02:17", "07:40")
+        assertEquals(LocalDate.of(2026, 11, 29), app.eatezy.data.lastSleepDay(listOf(sat, sun), LocalDateTime.of(2026, 11, 29, 7, 45)))
+    }
 }

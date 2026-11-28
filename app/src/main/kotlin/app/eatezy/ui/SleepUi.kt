@@ -40,7 +40,9 @@ import app.eatezy.data.averageClock
 import app.eatezy.data.bedBefore
 import app.eatezy.data.hm
 import app.eatezy.data.nearest
+import app.eatezy.data.lastSleepDay
 import app.eatezy.data.usualBed
+import app.eatezy.data.usualWake
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Moon
 import com.composables.icons.lucide.Plus
@@ -197,15 +199,17 @@ fun BedDialog(onDismiss: () -> Unit, onSave: (LocalDateTime) -> Unit) {
 /** A night typed in by hand or edited: the morning it ended, bedtime and wake-up. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SleepEditDialog(entry: SleepEntry?, usual: LocalTime?, onDismiss: () -> Unit, onDelete: (() -> Unit)?, onSave: (SleepEntry) -> Unit) {
+fun SleepEditDialog(entry: SleepEntry?, usual: LocalTime?, onDismiss: () -> Unit, onDelete: (() -> Unit)?, onSave: (SleepEntry) -> Unit, lastDay: LocalDate = LocalDate.now(), usualWakeT: LocalTime? = null) {
     val today = LocalDate.now()
-    var morning by remember { mutableStateOf(entry?.date ?: today) }
-    var wakeT by remember { mutableStateOf(entry?.wake?.toLocalTime() ?: LocalTime.of(7, 30)) }
+    // A new night defaults to the last one that is over: at 2 am that is the night that ended yesterday.
+    var morning by remember { mutableStateOf(entry?.date ?: lastDay) }
+    var wakeT by remember { mutableStateOf(entry?.wake?.toLocalTime() ?: usualWakeT ?: LocalTime.of(7, 30)) }
     var bedT by remember { mutableStateOf(entry?.bed?.toLocalTime() ?: usual ?: LocalTime.of(23, 30)) }
     var hasWake by remember { mutableStateOf(entry == null || entry.wake != null) }
     var picking by remember { mutableStateOf<String?>(null) }
     val wake = morning.atTime(wakeT)
     val bed = bedBefore(bedT, if (hasWake) wake else morning.plusDays(1).atStartOfDay())
+    val future = (if (hasWake) wake else bed).isAfter(now())
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = C.surface,
@@ -223,6 +227,7 @@ fun SleepEditDialog(entry: SleepEntry?, usual: LocalTime?, onDismiss: () -> Unit
                 if (hasWake) Duration.between(bed, wake).toMinutes().takeIf { it > 0 }?.let {
                     Text(t("Sleep ≈ ${it.hm()}", "Сон ≈ ${it.hm()}"), style = T.small)
                 }
+                if (future) Text(t("This time has not come yet: pick another day or time.", "Это время ещё не наступило: выберите другой день или время."), style = T.small.copy(color = C.accent))
                 if (onDelete != null) Text(
                     t("Delete", "Удалить"), style = T.body.copy(color = C.accent),
                     modifier = Modifier.clickable(onClick = onDelete).padding(vertical = S.s6),
@@ -231,7 +236,7 @@ fun SleepEditDialog(entry: SleepEntry?, usual: LocalTime?, onDismiss: () -> Unit
         },
         confirmButton = {
             TextButton({
-                onSave(SleepEntry(id = entry?.id ?: java.util.UUID.randomUUID().toString(), bed = bed, wake = if (hasWake) wake else null, source = "manual"))
+                if (!future) onSave(SleepEntry(id = entry?.id ?: java.util.UUID.randomUUID().toString(), bed = bed, wake = if (hasWake) wake else null, source = "manual"))
             }) { Text(t("Save", "Сохранить"), color = C.accent) }
         },
     )
@@ -303,7 +308,8 @@ fun SleepPanel(days: Int) {
     var editing by remember { mutableStateOf<SleepEntry?>(null) }
     var adding by remember { mutableStateOf(false) }
     var history by remember { mutableStateOf(false) }
-    val today = LocalDate.now()
+    // Tonight is not a gap until it is over: the chart ends at the last finished night.
+    val today = lastSleepDay(nights)
     val from = today.minusDays(days - 1L)
     val shown = nights.filter { !it.date.isBefore(from) && !it.date.isAfter(today) }
     val done = shown.filter { it.minutes != null }
@@ -351,12 +357,12 @@ fun SleepPanel(days: Int) {
         }
     }
     val usual = usualBed(nights)
-    if (adding) SleepEditDialog(null, usual, { adding = false }, null) { e -> adding = false; scope.launch { repo.saveSleep(e) } }
+    if (adding) SleepEditDialog(null, usual, { adding = false }, null, { e -> adding = false; scope.launch { repo.saveSleep(e) } }, today, usualWake(nights))
     editing?.let { e ->
         androidx.compose.runtime.key(e.id) {
-            SleepEditDialog(e, usual, { editing = null }, { editing = null; scope.launch { repo.deleteSleep(e.id) } }) { n ->
+            SleepEditDialog(e, usual, { editing = null }, { editing = null; scope.launch { repo.deleteSleep(e.id) } }, onSave = { n ->
                 editing = null; scope.launch { repo.saveSleep(n) }
-            }
+            })
         }
     }
 }
