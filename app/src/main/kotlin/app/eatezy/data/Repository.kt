@@ -213,7 +213,72 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
         latestWeight()?.let { kg -> settings.update { it.copy(profile = it.profile.copy(weightKg = kg)) } }
     }
 
-    // ---------- coach ----------
+    // ---------- sleep ----------
+
+    val sleep: Flow<List<SleepEntry>> = db.sleep().all().map { rows -> rows.map(SleepRow::toEntry) }
+
+    /** Bedtime logged but no wake-up yet. */
+    val openSleep: Flow<SleepEntry?> = db.sleep().watchOpen().map { it?.toEntry()?.takeIf { e -> isFresh(e) } }
+
+    private suspend fun openNight(): SleepEntry? = db.sleep().open()?.toEntry()?.takeIf { isFresh(it) }
+    suspend fun sleepOnce(): List<SleepEntry> = db.sleep().allOnce().map(SleepRow::toEntry)
+
+    private val _wakePrompt = MutableStateFlow<SleepPrompt?>(null)
+
+    /** The "Good morning" dialog to show, if any. */
+    val wakePrompt: StateFlow<SleepPrompt?> = _wakePrompt
+
+    suspend fun saveSleep(e: SleepEntry) { db.sleep().put(e.toRow()); sleepChanged() }
+    suspend fun deleteSleep(id: String) { db.sleep().delete(id); sleepChanged() }
+
+    /** "Going to sleep": opens the night (an open one is moved to the new time). */
+    suspend fun goToBed(at: java.time.LocalDateTime, source: String = "button") {
+        val open = openNight()
+        saveSleep(SleepEntry(id = open?.id ?: java.util.UUID.randomUUID().toString(), bed = at, wake = null, source = source))
+    }
+
+    /** Woke up: closes the open night, or logs a new one. [bedSource] says where [bed] came from. */
+    suspend fun wakeUp(wake: java.time.LocalDateTime, bed: java.time.LocalDateTime?, bedSource: String) {
+        val open = openNight()
+        val source = if (open != null && bed == open.bed) open.source else bedSource
+        saveSleep(SleepEntry(id = open?.id ?: java.util.UUID.randomUUID().toString(), bed = bed, wake = wake, source = source))
+        _wakePrompt.value = null
+    }
+
+    /** What the wake-up dialog starts with: the logged bedtime, else the usual one (last 7 nights). */
+    suspend fun wakeDefaults(now: java.time.LocalDateTime = java.time.LocalDateTime.now()): SleepPrompt {
+        openNight()?.let { return SleepPrompt(it.bed, "button") }
+        val usual = usualBed(sleepOnce()) ?: return SleepPrompt(null, "none")
+        return SleepPrompt(bedBefore(usual, now), "usual")
+    }
+
+    /** Shows the wake-up dialog now (the morning notification, the "I woke up" row). */
+    suspend fun askWake() { _wakePrompt.value = wakeDefaults() }
+
+    fun dismissWake() { _wakePrompt.value = null }
+
+    /**
+     * The app came to the screen. After [gapHours] or more without it the user probably slept:
+     * ask when they woke up, unless that night is already logged.
+     */
+    suspend fun onAppShown(nowMs: Long = System.currentTimeMillis(), gapHours: Int = 6) {
+        val last = settings.lastSeen()
+        settings.setLastSeen(nowMs)
+        if (last <= 0 || nowMs - last < gapHours * 3600_000L) return
+        val lastTime = java.time.Instant.ofEpochMilli(last).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+        val woke = sleepOnce().mapNotNull { it.wake }.maxOrNull()
+        if (woke != null && woke.isAfter(lastTime)) return
+        askWake()
+    }
+
+    suspend fun onAppHidden() = settings.setLastSeen(System.currentTimeMillis())
+
+    private suspend fun sleepChanged() {
+        app.eatezy.SleepReminders.schedule(context, this)
+        app.eatezy.SleepReminders.cancelShown(context)
+    }
+
+    // ---------- coach ----------    // ---------- coach ----------
 
     val chat: Flow<List<ChatMessage>> = db.chat().all().map { rows -> rows.map { ChatMessage(it.id, it.fromUser, it.text, it.at) } }
 
@@ -255,7 +320,9 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
             n.filterValues { it > 0 }.toSortedMap().entries.joinToString(", ") { (k, v) -> "$k ${v.fmt(if (v >= 100) 0 else 1)}" }
 
         val byDay = entries.groupBy { it.date }
-        val days = (byDay.keys + activity.keys).toSortedSet().joinToString("\n\n") { d ->
+        val allNights = sleepOnce()
+        val nights = allNights.filter { !it.date.isBefore(from) && !it.date.isAfter(today) }.groupBy { it.date }
+        val days = (byDay.keys + activity.keys + nights.keys).toSortedSet().joinToString("\n\n") { d ->
             val list = byDay[d].orEmpty().sortedBy { it.time }
             val t = list.fold(Totals()) { a, e -> a + e.totals }
             buildString {
@@ -265,6 +332,10 @@ class Repository(private val context: Context, val db: Db, val settings: Setting
                 activity[d]?.let { a ->
                     append("; steps ${a.steps}")
                     if (a.burnedKcal > 0) append(", burned ${a.burnedKcal.fmt(0)} kcal${if (d == today) " so far" else ""}, balance ${(t.kcal - a.burnedKcal).fmt(0)} kcal")
+                }
+                for (n in nights[d].orEmpty()) {
+                    append("; slept ${n.bed?.toLocalTime()?.toString()?.take(5) ?: "?"}→${n.wake?.toLocalTime()?.toString()?.take(5) ?: "still asleep"}")
+                    n.minutes?.let { append(" (${it.hm()} h)") }
                 }
                 nutrientLine(t.nutrients).takeIf { it.isNotEmpty() }?.let { append("\n  nutrients: ").append(it) }
                 for (e in list) {
@@ -286,6 +357,7 @@ Profile: ${if (p.male) "male" else "female"}, born ${p.birthYear}, ${p.heightCm.
 Daily targets: ${g.kcal.fmt(0)} kcal, protein ${g.protein.fmt(0)} g, carbs ${g.carbs.fmt(0)} g, fat ${g.fat.fmt(0)} g.
 Nutrient targets per day (key names carry the unit): ${nutrientTargets.ifEmpty { "none tracked" }}
 Weight log: ${weights.ifEmpty { "none" }}
+Sleep: ${usualBed(allNights)?.let { "usual bedtime ~${it.toString().take(5)}, usual wake-up ~${usualWake(allNights)?.toString()?.take(5)}; per night below (approximate, logged by the user)" } ?: "not logged"}
 Activity: ${if (activity.isEmpty()) "no data (Health Connect off or empty)" else "steps and burned calories from Health Connect, per day below"}
 ${if (unfinished > 0) "Today $unfinished more food(s) are still being recognized or failed; they are not in the numbers.\n" else ""}Diary, last 14 days:
 ${days.ifEmpty { "empty" }}
@@ -313,6 +385,7 @@ ${days.ifEmpty { "empty" }}
             if (prefs.ai.openrouterKey.isNotBlank()) runCatching { refreshModels(OPENROUTER) }
             if (prefs.ai.geminiKey.isNotBlank()) runCatching { refreshModels(GEMINI) }
             runCatching { syncWeightsFromHealth() }
+            runCatching { app.eatezy.SleepReminders.schedule(context, this@Repository) }
         }
     }
 
@@ -322,18 +395,38 @@ ${days.ifEmpty { "empty" }}
         val data = importDiary(text)
         db.entries().putAll(data.entries.map { it.toRow() })
         data.weights.forEach { db.weights().put(WeightRow(it.id, it.date.toString(), it.kg)) }
+        data.sleep.forEach { db.sleep().put(it.toRow()) }
+        if (data.sleep.isNotEmpty()) sleepChanged()
         data.targets?.let { t -> settings.update { it.copy(targets = it.targets.copy(manual = true, kcal = t.kcal, protein = t.protein, carbs = t.carbs, fat = t.fat)) } }
         return data
     }
 
-    suspend fun export(): String = exportDiary(
-        db.entries().all().map(EntryRow::toEntry),
-        db.weights().allOnce().map { WeightEntry(it.id, LocalDate.parse(it.date), it.kg) },
-        settings.now().goals,
-    )
+    suspend fun export(period: Period = Period.ALL): String {
+        val from = period.days?.let { LocalDate.now().minusDays(it - 1L) }
+        return exportDiary(
+            db.entries().all().map(EntryRow::toEntry).filter { from == null || !it.date.isBefore(from) },
+            db.weights().allOnce().map { WeightEntry(it.id, LocalDate.parse(it.date), it.kg) }.filter { from == null || !it.date.isBefore(from) },
+            settings.now().goals,
+            sleepOnce().filter { from == null || !it.date.isBefore(from) },
+        )
+    }
+
+    /** Markdown report of the period for an AI chat: foods, nutrients, steps, burned calories, weight. */
+    suspend fun report(period: Period): String {
+        val prefs = settings.now()
+        val today = LocalDate.now()
+        val from = period.from(today, firstDate())
+        val entries = db.entries().rangeOnce(from.toString(), today.toString()).map(EntryRow::toEntry)
+        val healthOn = prefs.healthConnect && health.granted()
+        val activity = if (healthOn) {
+            generateSequence(from) { it.plusDays(1) }.takeWhile { !it.isAfter(today) }.associateWith { health.day(it) }
+        } else emptyMap()
+        val weights = db.weights().allOnce().map { WeightEntry(it.id, LocalDate.parse(it.date), it.kg) }
+        return aiReport(from, today, entries, weights, activity, prefs, language(prefs) == "ru", healthOn = healthOn, sleep = sleepOnce())
+    }
 
     suspend fun wipe() {
-        db.entries().clear(); db.weights().clear(); db.chat().clear()
+        db.entries().clear(); db.weights().clear(); db.chat().clear(); db.sleep().clear()
         File(context.filesDir, "photos").deleteRecursively()
     }
 

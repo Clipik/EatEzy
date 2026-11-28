@@ -109,6 +109,7 @@ fun HomeScreen(p: Prefs, date: LocalDate, onDate: (LocalDate) -> Unit) {
                     Icon(Lucide.ChevronRight, null, tint = C.text3, modifier = Modifier.size(14.dp))
                 }
             }
+            if (date == LocalDate.now()) item { SleepHomeRow(Modifier.padding(horizontal = Margin, vertical = S.s6)) }
             if (entries.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(S.s36), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("🍽️", fontSize = 36.sp)

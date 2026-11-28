@@ -48,6 +48,12 @@ data class WeightRow(@PrimaryKey val id: String, val date: String, val kg: Doubl
 @Entity(tableName = "chat")
 data class ChatRow(@PrimaryKey(autoGenerate = true) val id: Long, val fromUser: Boolean, val text: String, val at: Long)
 
+@Entity(tableName = "sleep", indices = [Index("bed"), Index("wake")])
+data class SleepRow(@PrimaryKey val id: String, val bed: String?, val wake: String?, val source: String)
+
+fun SleepEntry.toRow() = SleepRow(id, bed?.toString(), wake?.toString(), source)
+fun SleepRow.toEntry() = SleepEntry(id, bed?.let(java.time.LocalDateTime::parse), wake?.let(java.time.LocalDateTime::parse), source)
+
 fun FoodEntry.toRow() = EntryRow(
     id, date.toString(), time.toString(), meal.key, name, emoji, photo, grams, kcal, protein, carbs, fat,
     json.encodeToString(nutrients), json.encodeToString(ingredients), source, note, favorite, status.name, error, createdAt,
@@ -140,13 +146,48 @@ interface ChatDao {
     suspend fun clear()
 }
 
-@Database(entities = [EntryRow::class, WeightRow::class, ChatRow::class], version = 1, exportSchema = false)
+@Dao
+interface SleepDao {
+    /** Newest first, by wake time or bed time for a night still going. */
+    @Query("SELECT * FROM sleep ORDER BY COALESCE(wake, bed) DESC")
+    fun all(): Flow<List<SleepRow>>
+
+    @Query("SELECT * FROM sleep ORDER BY COALESCE(wake, bed) DESC")
+    suspend fun allOnce(): List<SleepRow>
+
+    /** A night with a bedtime and no wake-up yet. */
+    @Query("SELECT * FROM sleep WHERE wake IS NULL ORDER BY bed DESC LIMIT 1")
+    suspend fun open(): SleepRow?
+
+    @Query("SELECT * FROM sleep WHERE wake IS NULL ORDER BY bed DESC LIMIT 1")
+    fun watchOpen(): Flow<SleepRow?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(row: SleepRow)
+
+    @Query("DELETE FROM sleep WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM sleep")
+    suspend fun clear()
+}
+
+@Database(entities = [EntryRow::class, WeightRow::class, ChatRow::class, SleepRow::class], version = 2, exportSchema = false)
 abstract class Db : RoomDatabase() {
     abstract fun entries(): EntryDao
     abstract fun weights(): WeightDao
     abstract fun chat(): ChatDao
+    abstract fun sleep(): SleepDao
 
     companion object {
-        fun open(context: Context): Db = Room.databaseBuilder(context, Db::class.java, "eatezy.db").build()
+        private val V1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `sleep` (`id` TEXT NOT NULL, `bed` TEXT, `wake` TEXT, `source` TEXT NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sleep_bed` ON `sleep` (`bed`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sleep_wake` ON `sleep` (`wake`)")
+            }
+        }
+
+        fun open(context: Context): Db = Room.databaseBuilder(context, Db::class.java, "eatezy.db").addMigrations(V1_2).build()
     }
 }

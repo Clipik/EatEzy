@@ -20,6 +20,7 @@ data class Imported(
     val weights: List<WeightEntry>,
     /** Daily targets the old app used, kept as manual targets. */
     val targets: Targets?,
+    val sleep: List<SleepEntry> = emptyList(),
 )
 
 private val supplementBack = Nutrients.fudSupplements.entries.associate { (k, v) -> v to k }
@@ -81,7 +82,14 @@ fun importDiary(text: String): Imported {
         val w = el.jsonObject
         WeightEntry(w.str("id") ?: java.util.UUID.randomUUID().toString(), LocalDate.parse(w.str("date") ?: return@mapNotNull null), w.num("kg") ?: return@mapNotNull null)
     }
-    return Imported(entries, weights, targets)
+    val sleep = root["sleep"]?.jsonArray.orEmpty().mapNotNull { el ->
+        val s = el.jsonObject
+        fun dt(k: String) = s.str(k)?.let { runCatching { java.time.LocalDateTime.parse(it) }.getOrNull() }
+        val bed = dt("bed"); val wake = dt("wake")
+        if (bed == null && wake == null) return@mapNotNull null
+        SleepEntry(s.str("id") ?: java.util.UUID.randomUUID().toString(), bed, wake, s.str("source") ?: "imported")
+    }
+    return Imported(entries, weights, targets, sleep)
 }
 
 private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
@@ -103,7 +111,7 @@ private fun JsonObject.nutrients(): Map<String, Double> {
 private fun r1(v: Double) = Math.round(v * 10) / 10.0
 
 /** Same shape as the Fud AI export so it can be read by either app. */
-fun exportDiary(entries: List<FoodEntry>, weights: List<WeightEntry>, targets: Targets): String {
+fun exportDiary(entries: List<FoodEntry>, weights: List<WeightEntry>, targets: Targets, sleep: List<SleepEntry> = emptyList()): String {
     val days = entries.filter { it.status == EntryStatus.OK }.groupBy { it.date }.toSortedMap()
     val obj = buildJsonObject {
         putJsonObject("export") {
@@ -166,6 +174,13 @@ fun exportDiary(entries: List<FoodEntry>, weights: List<WeightEntry>, targets: T
         }
         putJsonArray("weights") {
             for (w in weights.sortedBy { it.date }) addJsonObject { put("id", w.id); put("date", w.date.toString()); put("kg", w.kg) }
+        }
+        putJsonArray("sleep") {
+            for (n in sleep.sortedBy { it.date }) addJsonObject {
+                put("id", n.id); put("date", n.date.toString())
+                n.bed?.let { put("bed", it.toString()) }; n.wake?.let { put("wake", it.toString()) }
+                n.minutes?.let { put("minutes", it) }; put("source", n.source)
+            }
         }
     }
     return obj.toString()

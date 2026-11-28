@@ -86,6 +86,9 @@ fun ProgressScreen(p: Prefs) {
         Spacer(Modifier.height(S.s12))
         WeightPanel(weights, days)
 
+        Spacer(Modifier.height(S.s12))
+        SleepPanel(days)
+
         if (steps.isNotEmpty()) {
             Spacer(Modifier.height(S.s12))
             Panel {
@@ -189,7 +192,7 @@ private fun Stat(value: String, label: String) {
 
 /** Bars per day with an optional dashed target line; few labels so they never overlap. */
 @Composable
-fun BarChart(values: List<Pair<LocalDate, Double>>, target: Double?, color: Color = C.text) {
+fun BarChart(values: List<Pair<LocalDate, Double>>, target: Double?, color: Color = C.text, overIsBad: Boolean = true) {
     val max = maxOf(values.maxOfOrNull { it.second } ?: 0.0, target ?: 0.0, 1.0) * 1.1
     Canvas(Modifier.fillMaxWidth().height(156.dp)) {
         val n = values.size
@@ -197,7 +200,7 @@ fun BarChart(values: List<Pair<LocalDate, Double>>, target: Double?, color: Colo
         val w = (size.width - gap * (n - 1)) / n
         values.forEachIndexed { i, (_, v) ->
             val h = (v / max * size.height).toFloat()
-            val over = target != null && v > target
+            val over = overIsBad && target != null && v > target
             val barH = maxOf(h, 3.dp.toPx())
             drawRoundRect(
                 if (v == 0.0) C.surface2 else color.copy(alpha = 0.45f),

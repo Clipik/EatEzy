@@ -177,4 +177,29 @@ class LogicTest {
         val prompt = foodSystemPrompt("ru")
         assertTrue(prompt.contains("fiber_g") && prompt.contains("sodium_mg"))
     }
+
+    @Test fun aiReportHasDaysStepsAndNutrients() {
+        val d1 = LocalDate.of(2026, 11, 26)
+        val d2 = LocalDate.of(2026, 11, 27)
+        val e = FoodEntry(
+            date = d1, time = LocalTime.of(13, 5), meal = Meal.LUNCH, name = "Borscht", grams = 350.0, kcal = 280.0,
+            protein = 12.0, carbs = 30.0, fat = 11.0, nutrients = mapOf("fiber_g" to 6.0, "sodium_mg" to 900.0),
+            ingredients = listOf(Ingredient("Beet", 150.0, 60.0, 2.0, 13.0, 0.2), Ingredient("Beef", 80.0, 150.0, 18.0, 0.0, 8.0)),
+        )
+        val r = app.eatezy.data.aiReport(
+            d1, d2, listOf(e), listOf(app.eatezy.data.WeightEntry(date = d2, kg = 80.4)),
+            mapOf(d1 to app.eatezy.health.DayActivity(9500, 2600.0)), app.eatezy.data.Prefs(), ru = true,
+            now = d2.atTime(20, 0),
+        )
+        println(r)
+        assertTrue(r.contains("2026-11-26 — 2026-11-27"))
+        assertTrue(r.contains("Borscht, 350 g"))
+        assertTrue(r.contains("Beet 150 g"))
+        assertTrue(r.contains("Шаги: 9500"))
+        assertTrue(r.contains("баланс -2320 kcal"))
+        assertTrue(r.contains("Клетчатка 6"))
+        assertTrue(r.contains("Еда не записана"))
+        assertTrue(r.contains("80.4 kg"))
+        assertEquals(LocalDate.of(2026, 11, 22), app.eatezy.data.Period.WEEK.from(LocalDate.of(2026, 11, 28), null))
+    }
 }

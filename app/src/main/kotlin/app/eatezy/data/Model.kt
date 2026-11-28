@@ -160,3 +160,29 @@ fun Double.fmt(digits: Int = 1): String {
     val r = Math.round(this * p) / p
     return if (r == r.toLong().toDouble()) r.toLong().toString() else r.toString()
 }
+
+/**
+ * One night: when the user went to bed and when they woke up. Both are approximate
+ * (falling asleep takes a while). [wake] is null while the user is still asleep.
+ */
+data class SleepEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val bed: java.time.LocalDateTime?,
+    val wake: java.time.LocalDateTime?,
+    /** "button" (Going to sleep), "notification", "usual" (bedtime filled with the usual one), "manual". */
+    val source: String = "manual",
+) {
+    /** The night belongs to the day the user woke up. */
+    val date: LocalDate get() = (wake ?: bed!!).toLocalDate().let { if (wake == null && bed!!.hour >= 12) it.plusDays(1) else it }
+    val minutes: Long? get() = if (bed != null && wake != null) java.time.Duration.between(bed, wake).toMinutes().takeIf { it > 0 } else null
+}
+
+/** 7 h 35 min → "7:35". */
+fun Long.hm(): String = "${this / 60}:${(this % 60).toString().padStart(2, '0')}"
+
+/** Bed/wake times averaged around midnight: minutes after noon, so 23:30 and 00:30 average to 00:00. */
+fun averageClock(times: List<LocalTime>): LocalTime? {
+    if (times.isEmpty()) return null
+    val avg = times.map { ((it.toSecondOfDay() / 60) - 720 + 1440) % 1440 }.average().toLong()
+    return LocalTime.ofSecondOfDay(((avg + 720) % 1440) * 60)
+}

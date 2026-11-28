@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,13 +59,17 @@ import com.composables.icons.lucide.ArrowDown
 import com.composables.icons.lucide.ArrowUp
 import com.composables.icons.lucide.Bot
 import com.composables.icons.lucide.Check
+import com.composables.icons.lucide.Copy
 import com.composables.icons.lucide.Download
 import com.composables.icons.lucide.Globe
 import com.composables.icons.lucide.HeartPulse
 import com.composables.icons.lucide.LayoutGrid
+import com.composables.icons.lucide.Moon
+import com.composables.icons.lucide.Sun
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.RefreshCw
+import com.composables.icons.lucide.Share2
 import com.composables.icons.lucide.Smartphone
 import com.composables.icons.lucide.Target
 import com.composables.icons.lucide.Trash2
@@ -127,6 +132,33 @@ fun SettingsScreen(p: Prefs) {
                 )
             }
             Divider()
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val nights by repo.sleep.collectAsState(initial = emptyList())
+            for (evening in listOf(true, false)) {
+                val on = if (evening) p.sleepEvening else p.sleepMorning
+                val at = if (evening) app.eatezy.data.eveningReminder(nights) else app.eatezy.data.morningReminder(nights)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        ListRow(
+                            if (evening) t("Bedtime reminder", "Вечернее напоминание") else t("Wake-up reminder", "Утреннее напоминание"),
+                            if (evening) Lucide.Moon else Lucide.Sun,
+                            subtitle = t("around ${at.hhmm()}, follows your sleep", "около ${at.hhmm()}, подстраивается под ваш сон"),
+                            chevron = false,
+                        )
+                    }
+                    Switch(
+                        on,
+                        { v ->
+                            scope.launch {
+                                repo.settings.update { if (evening) it.copy(sleepEvening = v) else it.copy(sleepMorning = v) }
+                                app.eatezy.SleepReminders.schedule(context, repo)
+                            }
+                        },
+                        colors = SwitchDefaults.colors(checkedTrackColor = C.accent, uncheckedTrackColor = C.surface2, uncheckedBorderColor = C.line),
+                    )
+                }
+                Divider()
+            }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = S.s12)) {
                 Icon(Lucide.Globe, null, tint = C.text2, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(S.s12))
@@ -461,6 +493,7 @@ private fun ModelPicker(p: Prefs, needsVision: Boolean, onDismiss: () -> Unit, o
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DataPage() {
     val repo = LocalRepo.current
@@ -476,17 +509,19 @@ private fun DataPage() {
             message = runCatching {
                 val text = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() } }
                 val r = repo.import(text)
-                t("Imported ${r.entries.size} foods, ${r.weights.size} weights", "Импортировано блюд: ${r.entries.size}, записей веса: ${r.weights.size}")
+                t("Imported ${r.entries.size} foods, ${r.weights.size} weights, ${r.sleep.size} nights", "Импортировано блюд: ${r.entries.size}, записей веса: ${r.weights.size}, ночей сна: ${r.sleep.size}")
             }.getOrElse { t("Could not read the file: ", "Не удалось прочитать файл: ") + it.message }
             busy = false
         }
     }
+    var period by remember { mutableStateOf(app.eatezy.data.Period.WEEK) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         busy = true
         scope.launch {
             message = runCatching {
-                val text = repo.export()
+                val text = repo.export(period)
                 withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(uri)!!.use { it.write(text.encodeToByteArray()) } }
                 t("Saved", "Сохранено")
             }.getOrElse { it.message }
@@ -498,11 +533,51 @@ private fun DataPage() {
             open.launch(arrayOf("application/json", "text/plain", "*/*"))
         }
         Divider()
-        ListRow(t("Export", "Экспорт"), Lucide.Download, subtitle = t("Everything to a .json file", "Всё в файл .json")) {
-            save.launch("EatEzy-${java.time.LocalDate.now()}.json")
+        ListRow(t("Delete all data", "Удалить все данные"), Lucide.Trash2, tint = C.accent) { confirmWipe = true }
+    }
+    SectionTitle(t("Export period", "Период выгрузки"))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(S.s6), verticalArrangement = Arrangement.spacedBy(S.s6)) {
+        for (p in app.eatezy.data.Period.entries) Chip(periodLabel(p), period == p, { period = p })
+    }
+    Spacer(Modifier.height(S.s12))
+    Panel(padding = S.s12) {
+        ListRow(t("Copy report for AI", "Скопировать отчёт для ИИ"), Lucide.Copy, subtitle = t("Foods, nutrients, steps, sleep, weight as text, to paste into a chat", "Еда, нутриенты, шаги, сон, вес текстом — вставить в чат с нейросетью")) {
+            busy = true
+            scope.launch {
+                message = runCatching {
+                    clipboard.setText(androidx.compose.ui.text.AnnotatedString(repo.report(period)))
+                    t("Report copied", "Отчёт скопирован")
+                }.getOrElse { it.message }
+                busy = false
+            }
         }
         Divider()
-        ListRow(t("Delete all data", "Удалить все данные"), Lucide.Trash2, tint = C.accent) { confirmWipe = true }
+        ListRow(t("Share report for AI", "Отправить отчёт для ИИ"), Lucide.Share2, subtitle = t("As a .md file to ChatGPT, Claude, Telegram…", "Файлом .md в ChatGPT, Claude, Telegram…")) {
+            busy = true
+            scope.launch {
+                message = runCatching {
+                    val text = repo.report(period)
+                    val file = withContext(Dispatchers.IO) {
+                        val dir = java.io.File(context.cacheDir, "export").apply { mkdirs() }
+                        java.io.File(dir, "EatEzy-report-${period.name.lowercase()}-${java.time.LocalDate.now()}.md").apply { writeText(text) }
+                    }
+                    val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        putExtra(Intent.EXTRA_SUBJECT, file.name)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(send, t("Send report", "Отправить отчёт")))
+                    null
+                }.getOrElse { it.message }
+                busy = false
+            }
+        }
+        Divider()
+        ListRow(t("Export backup", "Экспорт копии"), Lucide.Download, subtitle = t("Diary of the period to a .json file (can be imported back)", "Дневник за период в файл .json (можно импортировать обратно)")) {
+            save.launch("EatEzy-${period.name.lowercase()}-${java.time.LocalDate.now()}.json")
+        }
     }
     if (busy) CircularProgressIndicator(Modifier.padding(S.s18).size(S.s24), color = C.text2, strokeWidth = 2.dp)
     message?.let { Text(it, style = T.body, modifier = Modifier.padding(S.s12)) }
@@ -513,6 +588,14 @@ private fun DataPage() {
         confirmButton = { TextButton({ confirmWipe = false; scope.launch { repo.wipe(); message = t("Deleted", "Удалено") } }) { Text(t("Delete", "Удалить"), color = C.accent) } },
         dismissButton = { TextButton({ confirmWipe = false }) { Text(t("Cancel", "Отмена"), color = C.text) } },
     )
+}
+
+private fun periodLabel(p: app.eatezy.data.Period) = when (p) {
+    app.eatezy.data.Period.DAY -> t("Today", "Сегодня")
+    app.eatezy.data.Period.WEEK -> t("7 days", "7 дней")
+    app.eatezy.data.Period.MONTH -> t("30 days", "30 дней")
+    app.eatezy.data.Period.QUARTER -> t("90 days", "90 дней")
+    app.eatezy.data.Period.ALL -> t("All time", "Всё время")
 }
 
 private const val REPO = "Clipik/EatEzy"

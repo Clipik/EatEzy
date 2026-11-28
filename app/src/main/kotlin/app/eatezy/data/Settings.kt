@@ -2,9 +2,11 @@ package app.eatezy.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
@@ -80,6 +82,9 @@ data class Prefs(
     /** "system", "ru" or "en". */
     val language: String = "system",
     val healthConnect: Boolean = false,
+    /** Evening "going to sleep?" and morning "when did you wake up?" notifications. */
+    val sleepEvening: Boolean = true,
+    val sleepMorning: Boolean = true,
     val modelCache: Map<String, ModelCache> = emptyMap(),
 ) {
     /** Targets in effect: manual ones, or computed from the profile. */
@@ -100,10 +105,18 @@ fun computeTargets(p: Profile, base: Targets = Targets()): Targets {
 
 private val Context.store by preferencesDataStore("prefs")
 private val KEY = stringPreferencesKey("prefs")
+private val LAST_SEEN = longPreferencesKey("last_seen")
 
 class Settings(private val context: Context) {
     val prefs: Flow<Prefs> = context.store.data.map { p ->
         p[KEY]?.let { runCatching { json.decodeFromString<Prefs>(it) }.getOrNull() } ?: Prefs()
+    }.distinctUntilChanged()
+
+    /** When the app was last on screen (epoch ms), 0 if never; used to notice a night's sleep. */
+    suspend fun lastSeen(): Long = context.store.data.first()[LAST_SEEN] ?: 0L
+
+    suspend fun setLastSeen(ms: Long) {
+        context.store.edit { it[LAST_SEEN] = ms }
     }
 
     suspend fun now(): Prefs = prefs.first()

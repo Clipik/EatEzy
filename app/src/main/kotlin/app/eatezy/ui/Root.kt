@@ -47,6 +47,8 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.MessageCircle
 import com.composables.icons.lucide.Settings
 import java.time.LocalDate
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 enum class Tab { HOME, PROGRESS, COACH, SETTINGS }
 
@@ -75,6 +77,21 @@ fun AppRoot(repo: Repository) {
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     var date by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
 
+    // Coming back after 6+ hours away: probably a night's sleep, ask when the user woke up.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val scope = kotlinx.coroutines.MainScope()
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_START -> scope.launch { repo.onAppShown() }
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> scope.launch { repo.onAppHidden() }
+                else -> {}
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); scope.cancel() }
+    }
+
     BackHandler(enabled = nav.stack.isNotEmpty() || tab != Tab.HOME) {
         if (nav.stack.isNotEmpty()) nav.back() else tab = Tab.HOME
     }
@@ -101,6 +118,7 @@ fun AppRoot(repo: Repository) {
                     }
                 }
                 (nav.stack.lastOrNull() as? Route.Edit)?.let { key(it.id) { EditScreen(it.id, p) } }
+                WakePromptHost()
             }
         }
     }
